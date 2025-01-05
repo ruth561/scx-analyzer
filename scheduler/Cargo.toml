@@ -1,0 +1,19 @@
+[package]
+name = "scheduler"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.65"
+libc = "0.2.137"
+libbpf-cargo = "=0.24.6"
+libbpf-rs = "=0.24.6"
+libbpf-sys = "=1.4.5+v1.4.5"
+scx_utils = "=1.0.5"
+scx_stats = "=1.0.5"
+ctrlc = "3.4.5"
+plain = "0.2.3"
+prettytable-rs = "=0.6.5"
+
+[build-dependencies]
+scx_utils = "=1.0.5"
