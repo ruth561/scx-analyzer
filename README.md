@@ -1,3 +1,53 @@
 # SCX Analyzer
 
 scx-analyzer traces scx callback invocations and display GUI using perfetto.
+
+# How to build
+
+## Scheduler
+
+To build the scheduler, run the following commands:
+
+```console
+$ cd scheduler
+$ cargo build
+```
+
+## SCX analyzer
+
+To build the scx-analyzer, use the following commands:
+
+```console
+$ cmake -B build
+$ cmake --build build
+```
+
+# How to use
+
+## Start the scheduler
+
+Run the scheduler with the following command:
+
+```console
+$ sudo scheduler/target/debug/scheduler
+[*] BPF scheduler starting!
+
+```
+
+## Execute the SCX analyzer
+
+After starting the scheduler, execute the SCX analyzer:
+
+```console
+$ sudo build/scx_analyzer 
+Starting scx-analyzer
+Collecting data, CTRL+c to stop
+Successfully open output file! fd=7
+```
+
+# Output
+
+After running the SCX Analyzer, an *output.perfetto-trace* file will be generated in the current directory.
+To view the trace data, use the Perfetto UI. Open the file in the Perfetto Trace Viewer for a detailed visualization of the collected trace data.
+
+![](img/perfetto-gui.png)
