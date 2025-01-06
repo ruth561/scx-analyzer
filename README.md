@@ -57,4 +57,6 @@ Successfully open output file! fd=7
 After running the SCX Analyzer, an *output.perfetto-trace* file will be generated in the current directory.
 To view the trace data, use the Perfetto UI. Open the file in the Perfetto Trace Viewer for a detailed visualization of the collected trace data.
 
+SCX events are located in 'Misc Global Tracks' section and are organized into per-CPU tracks.
+
 ![](img/perfetto-gui.png)

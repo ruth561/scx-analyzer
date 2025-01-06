@@ -34,7 +34,7 @@ void set_all_track_names()
 		auto track = get_track(cpu);
 		auto desc = track.Serialize();
 
-		snprintf(track_name, 0x20, "SCX (Cpu %d)", cpu);
+		snprintf(track_name, 0x20, "SCX Track for CPU %2d", cpu);
 		desc.set_name(track_name);
 		perfetto::TrackEvent::SetTrackDescriptor(track, desc);
 	}
