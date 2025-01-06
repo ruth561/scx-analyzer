@@ -14,26 +14,6 @@ void trace_stopping(struct entry_header *hdr, struct stopping_aux *aux);
 void trace_quiescent(struct entry_header *hdr, struct quiescent_aux *aux);
 void trace_init_task(struct entry_header *hdr, struct init_task_aux *aux);
 void trace_exit_task(struct entry_header *hdr, struct exit_task_aux *aux);
+void trace_enable(struct entry_header *hdr, struct enable_aux *aux);
+void trace_disable(struct entry_header *hdr, struct disable_aux *aux);
 void trace_normal(struct entry_header *hdr, void *_aux);
-
-static const char *get_string_from_cbid(int cbid)
-{
-	switch (cbid) {
-	case CBID_SELECT_CPU:
-		return "select_cpu";
-	case CBID_ENQUEUE:
-		return "enqueue";
-	case CBID_DISPATCH:
-		return "dispatch";
-	case CBID_RUNNABLE:
-		return "runnable";
-	case CBID_RUNNING:
-		return "running";
-	case CBID_STOPPING:
-		return "stopping";
-	case CBID_QUIESCENT:
-		return "quiescent";
-	default:
-		return "UNKNOWN";
-	}
-}

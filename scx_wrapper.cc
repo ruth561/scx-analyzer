@@ -261,7 +261,7 @@ void trace_enable(struct entry_header *hdr, struct enable_aux *aux)
 		    (uint64_t) hdr->start,
 		    "CPU", hdr->cpu,
 		    "pid", aux->pid);
-	TRACE_EVENT_END("scx", (uint64_t) hdr->end);
+	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
 
 void trace_disable(struct entry_header *hdr, struct disable_aux *aux)
@@ -273,7 +273,7 @@ void trace_disable(struct entry_header *hdr, struct disable_aux *aux)
 		    (uint64_t) hdr->start,
 		    "CPU", hdr->cpu,
 		    "pid", aux->pid);
-	TRACE_EVENT_END("scx", (uint64_t) hdr->end);
+	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
 
 void trace_normal(struct entry_header *hdr, void *_aux)

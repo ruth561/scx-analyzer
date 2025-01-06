@@ -57,6 +57,12 @@ int ring_buffer_handler(void *ctx, void *data, size_t size)
 	case CBID_EXIT_TASK:
 		trace_exit_task(hdr, (struct exit_task_aux *) aux);
 		break;
+	case CBID_ENABLE:
+		trace_enable(hdr, (struct enable_aux *) aux);
+		break;
+	case CBID_DISABLE:
+		trace_disable(hdr, (struct disable_aux *) aux);
+		break;
 	case CBID_DISPATCH:
 		/* fallthrough */
 	default:

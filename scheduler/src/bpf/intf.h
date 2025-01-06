@@ -30,8 +30,38 @@ enum stat_idx {
 	CBID_DISPATCH,
 	CBID_CPU_ONLINE,
 	CBID_CPU_OFFLINE,
-	TUTORIAL_NR_STATS,
+	NR_CBID,
 };
+
+static inline const char *get_string_from_cbid(int cbid)
+{
+	switch (cbid) {
+	case CBID_SELECT_CPU:
+		return "select_cpu";
+	case CBID_ENQUEUE:
+		return "enqueue";
+	case CBID_DISPATCH:
+		return "dispatch";
+	case CBID_RUNNABLE:
+		return "runnable";
+	case CBID_RUNNING:
+		return "running";
+	case CBID_STOPPING:
+		return "stopping";
+	case CBID_QUIESCENT:
+		return "quiescent";
+	case CBID_INIT_TASK:
+		return "init_task";
+	case CBID_EXIT_TASK:
+		return "exit_task";
+	case CBID_ENABLE:
+		return "enable";
+	case CBID_DISABLE:
+		return "disable";
+	default:
+		return "UNKNOWN";
+	}
+}
 
 typedef unsigned char u8;
 typedef int s32;
