@@ -63,6 +63,38 @@ struct runnable_aux {
 	u64 enq_flags;
 };
 
+struct running_aux {
+	s32 pid;
+};
+
+struct stopping_aux {
+	s32 pid;
+	s32 runnable; /* bool */
+};
+
+struct quiescent_aux {
+	s32 pid;
+	u64 deq_flags;
+};
+
+struct init_task_aux {
+	s32 pid;
+	s32 fork;
+};
+
+struct exit_task_aux {
+	s32 pid;
+	s32 cancelled;
+};
+
+struct enable_aux {
+	s32 pid;
+};
+
+struct disable_aux {
+	s32 pid;
+};
+
 const u64 ENTRY_SIZE = sizeof(struct entry_header);
 
 #endif /* __INTF_H */

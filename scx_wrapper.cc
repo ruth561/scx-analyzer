@@ -140,6 +140,73 @@ void trace_runnable(struct entry_header *hdr, struct runnable_aux *aux)
 	TRACE_EVENT_END("scx", (uint64_t) hdr->end);
 }
 
+void trace_running(struct entry_header *hdr, struct running_aux *aux)
+{
+	TRACE_EVENT("scx", "running",
+		    (uint64_t) hdr->start,
+		    "CPU", hdr->cpu,
+		    "pid", aux->pid);
+	TRACE_EVENT_END("scx", (uint64_t) hdr->end);
+}
+
+void trace_stopping(struct entry_header *hdr, struct stopping_aux *aux)
+{
+	TRACE_EVENT("scx", "stopping",
+		    (uint64_t) hdr->start,
+		    "CPU", hdr->cpu,
+		    "pid", aux->pid,
+		    "runnable", aux->runnable ? "true" : "false");
+	TRACE_EVENT_END("scx", (uint64_t) hdr->end);
+}
+
+void trace_quiescent(struct entry_header *hdr, struct quiescent_aux *aux)
+{
+	TRACE_EVENT("scx", "quiescent",
+		    (uint64_t) hdr->start,
+		    "CPU", hdr->cpu,
+		    "pid", aux->pid,
+		    "deq_flags", aux->deq_flags);
+	TRACE_EVENT_END("scx", (uint64_t) hdr->end);
+}
+
+void trace_init_task(struct entry_header *hdr, struct init_task_aux *aux)
+{
+	TRACE_EVENT("scx", "init_task",
+		    (uint64_t) hdr->start,
+		    "CPU", hdr->cpu,
+		    "pid", aux->pid,
+		    "fork", aux->fork);
+	TRACE_EVENT_END("scx", (uint64_t) hdr->end);
+}
+
+void trace_exit_task(struct entry_header *hdr, struct exit_task_aux *aux)
+{
+	TRACE_EVENT("scx", "exit_task",
+		    (uint64_t) hdr->start,
+		    "CPU", hdr->cpu,
+		    "pid", aux->pid,
+		    "cancelled", aux->cancelled);
+	TRACE_EVENT_END("scx", (uint64_t) hdr->end);
+}
+
+void trace_enable(struct entry_header *hdr, struct enable_aux *aux)
+{
+	TRACE_EVENT("scx", "enable",
+		    (uint64_t) hdr->start,
+		    "CPU", hdr->cpu,
+		    "pid", aux->pid);
+	TRACE_EVENT_END("scx", (uint64_t) hdr->end);
+}
+
+void trace_disable(struct entry_header *hdr, struct disable_aux *aux)
+{
+	TRACE_EVENT("scx", "disable",
+		    (uint64_t) hdr->start,
+		    "CPU", hdr->cpu,
+		    "pid", aux->pid);
+	TRACE_EVENT_END("scx", (uint64_t) hdr->end);
+}
+
 void trace_normal(struct entry_header *hdr, void *_aux)
 {
 	const char *cbstr = get_string_from_cbid(hdr->cbid);

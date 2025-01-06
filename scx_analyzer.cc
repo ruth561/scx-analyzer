@@ -42,6 +42,21 @@ int ring_buffer_handler(void *ctx, void *data, size_t size)
 	case CBID_RUNNABLE:
 		trace_runnable(hdr, (struct runnable_aux *) aux);
 		break;
+	case CBID_RUNNING:
+		trace_running(hdr, (struct running_aux *) aux);
+		break;
+	case CBID_STOPPING:
+		trace_stopping(hdr, (struct stopping_aux *) aux);
+		break;
+	case CBID_QUIESCENT:
+		trace_quiescent(hdr, (struct quiescent_aux *) aux);
+		break;
+	case CBID_INIT_TASK:
+		trace_init_task(hdr, (struct init_task_aux *) aux);
+		break;
+	case CBID_EXIT_TASK:
+		trace_exit_task(hdr, (struct exit_task_aux *) aux);
+		break;
 	case CBID_DISPATCH:
 		/* fallthrough */
 	default:

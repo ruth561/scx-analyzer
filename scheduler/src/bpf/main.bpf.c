@@ -15,22 +15,6 @@ struct {
 	__uint(max_entries, BPF_RINGBUF_SIZE);
 } cb_history_rb SEC(".maps");
 
-void record_scx_cbs(void *ctx, u32 cbid, u64 start, u64 end)
-{
-	struct entry_header entry;
-	s32 cpu = bpf_get_smp_processor_id();
-
-	if (cpu != 0)
-		return;
-
-	entry.cpu = cpu;
-	entry.cbid = cbid;
-	entry.start = start;
-	entry.end = end;
-	
-	bpf_ringbuf_output(&cb_history_rb, &entry, sizeof(entry), 0);
-}
-
 static void set_header(struct entry_header *header, u32 cbid, u64 start, u64 end)
 {
 	s32 cpu = bpf_get_smp_processor_id();
@@ -62,7 +46,7 @@ static void record_enqueue(u64 start, u64 end, struct task_struct *p, u64 enq_fl
 	const static u64 hdr_size = sizeof(struct entry_header);
 	const static u64 buf_size = hdr_size + sizeof(struct enqueue_aux);
 
-	u8 buf[buf_size];
+	__attribute__((aligned(8))) u8 buf[buf_size];
 	struct entry_header *hdr = (struct entry_header *) buf;
 	struct enqueue_aux *aux = (struct enqueue_aux *) &buf[hdr_size];
 
@@ -78,13 +62,122 @@ static void record_runnable(u64 start, u64 end, struct task_struct *p, u64 enq_f
 	const static u64 hdr_size = sizeof(struct entry_header);
 	const static u64 buf_size = hdr_size + sizeof(struct runnable_aux);
 
-	u8 buf[buf_size];
+	__attribute__((aligned(8))) u8 buf[buf_size];
 	struct entry_header *hdr = (struct entry_header *) buf;
 	struct runnable_aux *aux = (struct runnable_aux *) &buf[hdr_size];
 
 	set_header(hdr, CBID_RUNNABLE, start, end);
 	aux->pid = p->pid;
 	aux->enq_flags = enq_flags;
+
+	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
+}
+
+static void record_stopping(u64 start, u64 end, struct task_struct *p, s32 runnable)
+{
+	const static u64 hdr_size = sizeof(struct entry_header);
+	const static u64 buf_size = hdr_size + sizeof(struct stopping_aux);
+
+	__attribute__((aligned(8))) u8 buf[buf_size];
+	struct entry_header *hdr = (struct entry_header *) buf;
+	struct stopping_aux *aux = (struct stopping_aux *) &buf[hdr_size];
+
+	set_header(hdr, CBID_STOPPING, start, end);
+	aux->pid = p->pid;
+	aux->runnable = runnable;
+
+	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
+}
+
+static void record_running(u64 start, u64 end, struct task_struct *p)
+{
+	const static u64 hdr_size = sizeof(struct entry_header);
+	const static u64 buf_size = hdr_size + sizeof(struct running_aux);
+
+	__attribute__((aligned(8))) u8 buf[buf_size];
+	struct entry_header *hdr = (struct entry_header *) buf;
+	struct running_aux *aux = (struct running_aux *) &buf[hdr_size];
+
+	set_header(hdr, CBID_RUNNING, start, end);
+	aux->pid = p->pid;
+
+	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
+}
+
+static void record_quiescent(u64 start, u64 end, struct task_struct *p, u64 deq_flags)
+{
+	const static u64 hdr_size = sizeof(struct entry_header);
+	const static u64 buf_size = hdr_size + sizeof(struct quiescent_aux);
+
+	__attribute__((aligned(8))) u8 buf[buf_size];
+	struct entry_header *hdr = (struct entry_header *) buf;
+	struct quiescent_aux *aux = (struct quiescent_aux *) &buf[hdr_size];
+
+	set_header(hdr, CBID_QUIESCENT, start, end);
+	aux->pid = p->pid;
+	aux->deq_flags = deq_flags;
+
+	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
+}
+
+static void record_init_task(u64 start, u64 end, struct task_struct *p, s32 fork)
+{
+	const static u64 hdr_size = sizeof(struct entry_header);
+	const static u64 buf_size = hdr_size + sizeof(struct init_task_aux);
+
+	__attribute__((aligned(8))) u8 buf[buf_size];
+	struct entry_header *hdr = (struct entry_header *) buf;
+	struct init_task_aux *aux = (struct init_task_aux *) &buf[hdr_size];
+
+	set_header(hdr, CBID_INIT_TASK, start, end);
+	aux->pid = p->pid;
+	aux->fork = fork;
+
+	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
+}
+
+static void record_exit_task(u64 start, u64 end, struct task_struct *p, s32 cancelled)
+{
+	const static u64 hdr_size = sizeof(struct entry_header);
+	const static u64 buf_size = hdr_size + sizeof(struct exit_task_aux);
+
+	__attribute__((aligned(8))) u8 buf[buf_size];
+	struct entry_header *hdr = (struct entry_header *) buf;
+	struct exit_task_aux *aux = (struct exit_task_aux *) &buf[hdr_size];
+
+	set_header(hdr, CBID_EXIT_TASK, start, end);
+	aux->pid = p->pid;
+	aux->cancelled = cancelled;
+
+	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
+}
+
+static void record_enable(u64 start, u64 end, struct task_struct *p)
+{
+	const static u64 hdr_size = sizeof(struct entry_header);
+	const static u64 buf_size = hdr_size + sizeof(struct enable_aux);
+
+	__attribute__((aligned(8))) u8 buf[buf_size];
+	struct entry_header *hdr = (struct entry_header *) buf;
+	struct enable_aux *aux = (struct enable_aux *) &buf[hdr_size];
+
+	set_header(hdr, CBID_ENABLE, start, end);
+	aux->pid = p->pid;
+
+	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
+}
+
+static void record_disable(u64 start, u64 end, struct task_struct *p)
+{
+	const static u64 hdr_size = sizeof(struct entry_header);
+	const static u64 buf_size = hdr_size + sizeof(struct disable_aux);
+
+	__attribute__((aligned(8))) u8 buf[buf_size];
+	struct entry_header *hdr = (struct entry_header *) buf;
+	struct disable_aux *aux = (struct disable_aux *) &buf[hdr_size];
+
+	set_header(hdr, CBID_DISABLE, start, end);
+	aux->pid = p->pid;
 
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
 }
@@ -131,7 +224,7 @@ s32 BPF_STRUCT_OPS_SLEEPABLE(scheduler_init_task, struct task_struct *p,
 	// ====================================================== //
 
 	end = bpf_ktime_get_boot_ns();
-	record_scx_cbs(ctx, CBID_INIT_TASK, start, end);
+	record_init_task(start, end, p, args->fork);
 	return 0;
 }
 
@@ -147,7 +240,7 @@ void BPF_STRUCT_OPS(scheduler_exit_task, struct task_struct *p,
 	// ====================================================== //
 
 	end = bpf_ktime_get_boot_ns();
-	record_scx_cbs(ctx, CBID_EXIT_TASK, start, end);
+	record_exit_task(start, end, p, args->cancelled);
 }
 
 void BPF_STRUCT_OPS(scheduler_enable, struct task_struct *p)
@@ -161,7 +254,7 @@ void BPF_STRUCT_OPS(scheduler_enable, struct task_struct *p)
 	// ====================================================== //
 
 	end = bpf_ktime_get_boot_ns();
-	record_scx_cbs(ctx, CBID_ENABLE, start, end);
+	record_enable(start, end, p);
 }
 
 void BPF_STRUCT_OPS(scheduler_disable, struct task_struct *p)
@@ -175,7 +268,7 @@ void BPF_STRUCT_OPS(scheduler_disable, struct task_struct *p)
 	// ====================================================== //
 
 	end = bpf_ktime_get_boot_ns();
-	record_scx_cbs(ctx, CBID_DISABLE, start, end);
+	record_disable(start, end, p);
 }
 
 /*******************************************************************************
@@ -207,7 +300,7 @@ void BPF_STRUCT_OPS(scheduler_running, struct task_struct *p)
 	// ====================================================== //
 
 	end = bpf_ktime_get_boot_ns();
-	record_scx_cbs(ctx, CBID_RUNNING, start, end);
+	record_running(start, end, p);
 }
 
 void BPF_STRUCT_OPS(scheduler_stopping, struct task_struct *p, bool runnable)
@@ -221,7 +314,7 @@ void BPF_STRUCT_OPS(scheduler_stopping, struct task_struct *p, bool runnable)
 	// ====================================================== //
 
 	end = bpf_ktime_get_boot_ns();
-	record_scx_cbs(ctx, CBID_STOPPING, start, end);
+	record_stopping(start, end, p, runnable);
 }
 
 void BPF_STRUCT_OPS(scheduler_quiescent, struct task_struct *p, u64 deq_flags)
@@ -235,7 +328,7 @@ void BPF_STRUCT_OPS(scheduler_quiescent, struct task_struct *p, u64 deq_flags)
 	// ====================================================== //
 
 	end = bpf_ktime_get_boot_ns();
-	record_scx_cbs(ctx, CBID_QUIESCENT, start, end);
+	record_quiescent(start, end, p, deq_flags);
 }
 
 /*******************************************************************************
@@ -258,7 +351,6 @@ s32 BPF_STRUCT_OPS(scheduler_select_cpu, struct task_struct *p, s32 prev_cpu,
 	// ====================================================== //
 
 	end = bpf_ktime_get_boot_ns();
-	// record_scx_cbs(ctx, CBID_SELECT_CPU, start, end);
 	record_select_cpu(start, end, p, prev_cpu, wake_flags);
 
 	return ret;
