@@ -24,7 +24,7 @@ static void set_header(struct entry_header *header, u32 cbid, u64 start, u64 end
 	header->end = end;
 }
 
-static void record_select_cpu(u64 start, u64 end, struct task_struct *p, s32 prev_cpu, u64 wake_flags)
+static void record_select_cpu(u64 start, u64 end, struct task_struct *p, s32 prev_cpu, u64 wake_flags, s32 selected_cpu)
 {
 	const static u64 hdr_size = sizeof(struct entry_header);
 	const static u64 buf_size = hdr_size + sizeof(struct select_cpu_aux);
@@ -37,6 +37,7 @@ static void record_select_cpu(u64 start, u64 end, struct task_struct *p, s32 pre
 	aux->pid = p->pid;
 	aux->prev_cpu = prev_cpu;
 	aux->wake_flags = wake_flags;
+	aux->selected_cpu = selected_cpu;
 
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
 }
@@ -351,7 +352,7 @@ s32 BPF_STRUCT_OPS(scheduler_select_cpu, struct task_struct *p, s32 prev_cpu,
 	// ====================================================== //
 
 	end = bpf_ktime_get_boot_ns();
-	record_select_cpu(start, end, p, prev_cpu, wake_flags);
+	record_select_cpu(start, end, p, prev_cpu, wake_flags, ret);
 
 	return ret;
 }

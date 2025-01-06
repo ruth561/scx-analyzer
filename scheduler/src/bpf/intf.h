@@ -51,6 +51,7 @@ struct select_cpu_aux {
 	s32 pid;
 	s32 prev_cpu;
 	u64 wake_flags;
+	s32 selected_cpu;
 };
 
 struct enqueue_aux {

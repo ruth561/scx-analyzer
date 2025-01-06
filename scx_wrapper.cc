@@ -116,7 +116,8 @@ void trace_select_cpu(struct entry_header *hdr, struct select_cpu_aux *aux)
 		    "CPU", hdr->cpu,
 		    "pid", aux->pid,
 		    "prev_cpu", aux->prev_cpu,
-		    "wake_flags", aux->wake_flags);
+		    "wake_flags", aux->wake_flags,
+		    "selected_cpu", aux->selected_cpu);
 	TRACE_EVENT_END("scx", (uint64_t) hdr->end);
 }
 
