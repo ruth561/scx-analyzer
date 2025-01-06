@@ -3,6 +3,7 @@
 #include <perfetto.h>
 #include <fcntl.h>
 
+#include "utils.h"
 #include "scx_wrapper.h"
 #include "scheduler/src/bpf/intf.h"
 
@@ -30,7 +31,16 @@ perfetto::Track get_track(s32 cpu)
 void set_all_track_names()
 {
 	char track_name[0x20];
-	for (int cpu = 0; cpu < 12 /* NR_CPUS*/; cpu++) {
+	int nr_cpus = get_nr_cpus_system(false);
+
+	if (nr_cpus < 0) {
+		fprintf(stderr, "Failed to get the number of CPUs in the system.\n");
+		return;
+	}
+
+	printf("nr_cpus: %d\n", nr_cpus);
+
+	for (int cpu = 0; cpu < nr_cpus; cpu++) {
 		auto track = get_track(cpu);
 		auto desc = track.Serialize();
 
