@@ -34,10 +34,6 @@ void record_scx_cbs(void *ctx, u32 cbid, u64 start, u64 end)
 static void set_header(struct entry_header *header, u32 cbid, u64 start, u64 end)
 {
 	s32 cpu = bpf_get_smp_processor_id();
-
-	if (cpu != 0)
-		return;
-
 	header->cpu = cpu;
 	header->cbid = cbid;
 	header->start = start;
@@ -73,6 +69,38 @@ static void record_enqueue(u64 start, u64 end, struct task_struct *p, u64 enq_fl
 	set_header(hdr, CBID_ENQUEUE, start, end);
 	aux->pid = p->pid;
 	aux->enq_flags = enq_flags;
+
+	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
+}
+
+static void record_runnable(u64 start, u64 end, struct task_struct *p, u64 enq_flags)
+{
+	const static u64 hdr_size = sizeof(struct entry_header);
+	const static u64 buf_size = hdr_size + sizeof(struct runnable_aux);
+
+	u8 buf[buf_size];
+	struct entry_header *hdr = (struct entry_header *) buf;
+	struct runnable_aux *aux = (struct runnable_aux *) &buf[hdr_size];
+
+	set_header(hdr, CBID_RUNNABLE, start, end);
+	aux->pid = p->pid;
+	aux->enq_flags = enq_flags;
+
+	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
+}
+
+/*
+ * Without auxiliary information.
+ */
+static void record_normal(s32 cbid, u64 start, u64 end)
+{
+	const static u64 hdr_size = sizeof(struct entry_header);
+	const static u64 buf_size = hdr_size;
+
+	u8 buf[buf_size];
+	struct entry_header *hdr = (struct entry_header *) buf;
+
+	set_header(hdr, cbid, start, end);
 
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
 }
@@ -165,7 +193,7 @@ void BPF_STRUCT_OPS(scheduler_runnable, struct task_struct *p, u64 enq_flags)
 	// ====================================================== //
 
 	end = bpf_ktime_get_boot_ns();
-	record_scx_cbs(ctx, CBID_RUNNABLE, start, end);
+	record_runnable(start, end, p, enq_flags);
 }
 
 void BPF_STRUCT_OPS(scheduler_running, struct task_struct *p)
@@ -267,7 +295,7 @@ void BPF_STRUCT_OPS(scheduler_dispatch, s32 cpu, struct task_struct *prev)
 	// ====================================================== //
 
 	end = bpf_ktime_get_boot_ns();
-	record_scx_cbs(ctx, CBID_DISPATCH, start, end);
+	record_normal(CBID_DISPATCH, start, end);
 }
 
 SCX_OPS_DEFINE(scheduler_ops,

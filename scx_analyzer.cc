@@ -39,6 +39,11 @@ int ring_buffer_handler(void *ctx, void *data, size_t size)
 	case CBID_ENQUEUE:
 		trace_enqueue(hdr, (struct enqueue_aux *) aux);
 		break;
+	case CBID_RUNNABLE:
+		trace_runnable(hdr, (struct runnable_aux *) aux);
+		break;
+	case CBID_DISPATCH:
+		/* fallthrough */
 	default:
 		trace_normal(hdr, aux);
 		break;

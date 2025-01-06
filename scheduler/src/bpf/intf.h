@@ -58,6 +58,11 @@ struct enqueue_aux {
 	u64 enq_flags;
 };
 
+struct runnable_aux {
+	s32 pid;
+	u64 enq_flags;
+};
+
 const u64 ENTRY_SIZE = sizeof(struct entry_header);
 
 #endif /* __INTF_H */

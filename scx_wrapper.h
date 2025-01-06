@@ -8,6 +8,7 @@ void stop_perfetto_trace(void);
 
 void trace_select_cpu(struct entry_header *hdr, struct select_cpu_aux *aux);
 void trace_enqueue(struct entry_header *hdr, struct enqueue_aux *aux);
+void trace_runnable(struct entry_header *hdr, struct runnable_aux *aux);
 void trace_normal(struct entry_header *hdr, void *_aux);
 
 static const char *get_string_from_cbid(int cbid)
