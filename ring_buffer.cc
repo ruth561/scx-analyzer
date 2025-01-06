@@ -5,6 +5,7 @@
 #include <errno.h>
 
 #include "ring_buffer.h"
+#include "scheduler/src/bpf/intf.h"
 
 /*
  * Find the BPF map with the name specified by @map_name in the system.

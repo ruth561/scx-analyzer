@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 
 #include "intf.h"
+#include "vmlinux.h"
 #include <scx/common.bpf.h>
 #include <bpf/bpf_helpers.h>
 #define SHARED_DSQ 0
@@ -16,7 +17,7 @@ struct {
 
 void record_scx_cbs(void *ctx, u32 cbid, u64 start, u64 end)
 {
-	struct cb_history_entry entry;
+	struct entry_header entry;
 	s32 cpu = bpf_get_smp_processor_id();
 
 	if (cpu != 0)
@@ -28,6 +29,36 @@ void record_scx_cbs(void *ctx, u32 cbid, u64 start, u64 end)
 	entry.end = end;
 	
 	bpf_ringbuf_output(&cb_history_rb, &entry, sizeof(entry), 0);
+}
+
+static void set_header(struct entry_header *header, u32 cbid, u64 start, u64 end)
+{
+	s32 cpu = bpf_get_smp_processor_id();
+
+	if (cpu != 0)
+		return;
+
+	header->cpu = cpu;
+	header->cbid = cbid;
+	header->start = start;
+	header->end = end;
+}
+
+static void record_select_cpu(u64 start, u64 end, struct task_struct *p, s32 prev_cpu, u64 wake_flags)
+{
+	const static u64 hdr_size = sizeof(struct entry_header);
+	const static u64 buf_size = hdr_size + sizeof(struct select_cpu_aux);
+
+	u8 buf[buf_size];
+	struct entry_header *hdr = buf;
+	struct select_cpu_aux *aux = &buf[hdr_size];
+
+	set_header(hdr, CBID_SELECT_CPU, start, end);
+	aux->pid = p->pid;
+	aux->prev_cpu = prev_cpu;
+	aux->wake_flags = wake_flags;
+
+	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
 }
 
 /*******************************************************************************
@@ -183,7 +214,8 @@ s32 BPF_STRUCT_OPS(scheduler_select_cpu, struct task_struct *p, s32 prev_cpu,
 	// ====================================================== //
 
 	end = bpf_ktime_get_boot_ns();
-	record_scx_cbs(ctx, CBID_SELECT_CPU, start, end);
+	// record_scx_cbs(ctx, CBID_SELECT_CPU, start, end);
+	record_select_cpu(start, end, p, prev_cpu, wake_flags);
 
 	return ret;
 }

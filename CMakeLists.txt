@@ -18,7 +18,7 @@ include_directories(
 	${LIBELF_INCLUDE_DIRS})
 
 # Link the library to your main executable.
-add_executable(scx_analyzer scx_analyzer.cc ring_buffer.cc)
+add_executable(scx_analyzer scx_analyzer.cc ring_buffer.cc scx_wrapper.cc)
 target_link_libraries(scx_analyzer
 	perfetto
 	${LIBBPF_LIB}

@@ -33,16 +33,26 @@ enum stat_idx {
 	TUTORIAL_NR_STATS,
 };
 
+typedef unsigned char u8;
 typedef int s32;
 typedef unsigned int u32;
 typedef long long s64;
 typedef unsigned long long u64;
 
-struct cb_history_entry {
+struct entry_header {
 	s32 cpu;
 	s32 cbid;
 	u64 start;
 	u64 end;
+	u8 aux[];
 };
+
+struct select_cpu_aux {
+	s32 pid;
+	s32 prev_cpu;
+	u64 wake_flags;
+};
+
+const u64 ENTRY_SIZE = sizeof(struct entry_header);
 
 #endif /* __INTF_H */

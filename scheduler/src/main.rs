@@ -26,7 +26,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-unsafe impl Plain for cb_history_entry {}
+unsafe impl Plain for entry_header {}
 
 fn main() {
     let shutdown = Arc::new(AtomicBool::new(false));
