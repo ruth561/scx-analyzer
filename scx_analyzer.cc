@@ -36,6 +36,9 @@ int ring_buffer_handler(void *ctx, void *data, size_t size)
 	case CBID_SELECT_CPU:
 		trace_select_cpu(hdr, (struct select_cpu_aux *) aux);
 		break;
+	case CBID_ENQUEUE:
+		trace_enqueue(hdr, (struct enqueue_aux *) aux);
+		break;
 	default:
 		trace_normal(hdr, aux);
 		break;

@@ -120,6 +120,16 @@ void trace_select_cpu(struct entry_header *hdr, struct select_cpu_aux *aux)
 	TRACE_EVENT_END("scx", (uint64_t) hdr->end);
 }
 
+void trace_enqueue(struct entry_header *hdr, struct enqueue_aux *aux)
+{
+	TRACE_EVENT("scx", "enqueue",
+		    (uint64_t) hdr->start,
+		    "CPU", hdr->cpu,
+		    "pid", aux->pid,
+		    "enq_flags", aux->enq_flags);
+	TRACE_EVENT_END("scx", (uint64_t) hdr->end);
+}
+
 void trace_normal(struct entry_header *hdr, void *_aux)
 {
 	const char *cbstr = get_string_from_cbid(hdr->cbid);

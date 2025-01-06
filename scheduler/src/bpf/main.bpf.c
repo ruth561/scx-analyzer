@@ -50,13 +50,29 @@ static void record_select_cpu(u64 start, u64 end, struct task_struct *p, s32 pre
 	const static u64 buf_size = hdr_size + sizeof(struct select_cpu_aux);
 
 	u8 buf[buf_size];
-	struct entry_header *hdr = buf;
-	struct select_cpu_aux *aux = &buf[hdr_size];
+	struct entry_header *hdr = (struct entry_header *) buf;
+	struct select_cpu_aux *aux = (struct select_cpu_aux *) &buf[hdr_size];
 
 	set_header(hdr, CBID_SELECT_CPU, start, end);
 	aux->pid = p->pid;
 	aux->prev_cpu = prev_cpu;
 	aux->wake_flags = wake_flags;
+
+	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
+}
+
+static void record_enqueue(u64 start, u64 end, struct task_struct *p, u64 enq_flags)
+{
+	const static u64 hdr_size = sizeof(struct entry_header);
+	const static u64 buf_size = hdr_size + sizeof(struct enqueue_aux);
+
+	u8 buf[buf_size];
+	struct entry_header *hdr = (struct entry_header *) buf;
+	struct enqueue_aux *aux = (struct enqueue_aux *) &buf[hdr_size];
+
+	set_header(hdr, CBID_ENQUEUE, start, end);
+	aux->pid = p->pid;
+	aux->enq_flags = enq_flags;
 
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
 }
@@ -235,7 +251,7 @@ void BPF_STRUCT_OPS(scheduler_enqueue, struct task_struct *p, u64 enq_flags)
 	// ====================================================== //
 
 	end = bpf_ktime_get_boot_ns();
-	record_scx_cbs(ctx, CBID_ENQUEUE, start, end);
+	record_enqueue(start, end, p, enq_flags);
 }
 
 void BPF_STRUCT_OPS(scheduler_dispatch, s32 cpu, struct task_struct *prev)

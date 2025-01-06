@@ -53,6 +53,11 @@ struct select_cpu_aux {
 	u64 wake_flags;
 };
 
+struct enqueue_aux {
+	s32 pid;
+	u64 enq_flags;
+};
+
 const u64 ENTRY_SIZE = sizeof(struct entry_header);
 
 #endif /* __INTF_H */
