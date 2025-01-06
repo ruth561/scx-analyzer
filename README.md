@@ -36,7 +36,14 @@ $ sudo scheduler/target/debug/scheduler
 
 ## Execute the SCX analyzer
 
-After starting the scheduler, execute the SCX analyzer:
+First, run *traced* in the background:
+
+```console
+$ sudo tracebox traced --background
+$ sudo tracebox traced_probes --background
+```
+
+Next, execute the SCX analyzer:
 
 ```console
 $ sudo build/scx_analyzer 
