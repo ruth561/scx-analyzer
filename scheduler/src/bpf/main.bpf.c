@@ -6,7 +6,8 @@
 #include <bpf/bpf_helpers.h>
 char _license[] SEC("license") = "GPL";
 
-#include "scheds/template.bpf.c"
+// #include "scheds/template.bpf.c"
+#include "isolcpus.bpf.c"
 
 #define BPF_RINGBUF_SIZE (4096 * 4096)
 
