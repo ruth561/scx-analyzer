@@ -3,7 +3,7 @@
  * Main implementation of the scheduler.
  */
 
-#include "intf.h"
+#include "../intf.h"
 #include "vmlinux.h"
 #include <scx/common.bpf.h>
 
