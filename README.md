@@ -17,10 +17,8 @@ $ git submodule update
 
 ```console
 $ cd libbpf/src
-$ make DESTDIR=../../bpf install
+$ make DESTDIR=_INSTALL install
 ```
-
-This will create the directories bpf/usr/include and bpf/usr/lib64.
 
 ### 3. Build the Perfetto's tracebox
 

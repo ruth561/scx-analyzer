@@ -3,4 +3,3 @@
 build/
 compile_commands.json
 *.perfetto-trace
-bpf/

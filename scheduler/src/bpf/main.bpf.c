@@ -8,6 +8,8 @@
 UEI_DEFINE(uei);
 char _license[] SEC("license") = "GPL";
 
+#include "sched.bpf.c"
+
 #define BPF_RINGBUF_SIZE (4096 * 4096)
 
 struct {
@@ -346,14 +348,13 @@ s32 BPF_STRUCT_OPS(scheduler_select_cpu, struct task_struct *p, s32 prev_cpu,
 		   u64 wake_flags)
 {
 	s32 ret;
-	bool is_idle;
 	u64 start, end;
 
 	start = bpf_ktime_get_boot_ns();
 
 	// ================= implementation ===================== //
 
-	ret = scx_bpf_select_cpu_dfl(p, prev_cpu, wake_flags, &is_idle);
+	ret = ops_select_cpu(p, prev_cpu, wake_flags);
 
 	// ====================================================== //
 
