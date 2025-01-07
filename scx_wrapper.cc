@@ -408,6 +408,34 @@ void trace_disable(struct entry_header *hdr, struct disable_aux *aux)
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
 
+void trace_set_cpumask(struct entry_header *hdr, struct set_cpumask_aux *aux)
+{
+	auto track = get_track(hdr->cpu);
+	char cpumask_buf[32];
+	snprintf(cpumask_buf, 32, "%llx", aux->cpumask);
+
+	TRACE_EVENT("scx", "set_cpumask",
+		    track,
+		    (uint64_t) hdr->start,
+		    "CPU", hdr->cpu,
+		    "thread", get_thread_name(&aux->th_info),
+		    "cpumask", cpumask_buf);
+	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
+}
+
+void trace_set_weight(struct entry_header *hdr, struct set_weight_aux *aux)
+{
+	auto track = get_track(hdr->cpu);
+
+	TRACE_EVENT("scx", "set_weight",
+		    track,
+		    (uint64_t) hdr->start,
+		    "CPU", hdr->cpu,
+		    "thread", get_thread_name(&aux->th_info),
+		    "weight", aux->weight);
+	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
+}
+
 void trace_normal(struct entry_header *hdr, void *_aux)
 {
 	auto track = get_track(hdr->cpu);

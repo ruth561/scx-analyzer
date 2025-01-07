@@ -55,7 +55,7 @@ static bool task_is_isolated(struct task_struct *p)
 
         if (housekeeped && isolated) {
                 bpf_printk("[?] %s[%d] is housekeeped and isolated", p->comm, p->pid);
-                return true; /* ? */
+                return false;
         }
 
         if (isolated) {
@@ -247,4 +247,34 @@ void ops_enqueue(struct task_struct *p, u64 enq_flags)
 void ops_dispatch(s32 cpu, struct task_struct *prev)
 {
         scx_bpf_consume(SHARED_DSQ);
+}
+
+void ops_set_cpumask(struct task_struct *p, const struct cpumask *cpumask)
+{
+        struct task_ctx *taskc;
+
+        /* check the equation between p->cpus_ptr and cpumask */
+        if (p->cpus_mask.bits[0] != cpumask->bits[0]) {
+                scx_bpf_error("[!] set_cpumask: p->cpus_mask is not equal to cpumask");
+                return;
+        }
+
+        taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
+	if (!taskc) {
+		scx_bpf_error("[!] set_cpumask: Failed to get task local storage");
+		return;
+	}
+        taskc->isolated = task_is_isolated(p);
+}
+
+void ops_set_weight(struct task_struct *p, u32 weight)
+{
+        struct task_ctx *taskc;
+
+        taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
+	if (!taskc) {
+		scx_bpf_error("[!] set_weight: Failed to get task local storage");
+		return;
+	}
+        taskc->isolated = task_is_isolated(p);
 }

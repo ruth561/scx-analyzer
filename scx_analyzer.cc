@@ -65,6 +65,12 @@ int ring_buffer_handler(void *ctx, void *data, size_t size)
 	case CBID_DISABLE:
 		trace_disable(hdr, (struct disable_aux *) aux);
 		break;
+	case CBID_SET_CPUMASK:
+		trace_set_cpumask(hdr, (struct set_cpumask_aux *) aux);
+		break;
+	case CBID_SET_WEIGHT:
+		trace_set_weight(hdr, (struct set_weight_aux *) aux);
+		break;
 	case CBID_DISPATCH:
 		/* fallthrough */
 	default:

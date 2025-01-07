@@ -30,6 +30,8 @@ enum stat_idx {
 	CBID_DISPATCH,
 	CBID_CPU_ONLINE,
 	CBID_CPU_OFFLINE,
+	CBID_SET_CPUMASK,
+	CBID_SET_WEIGHT,
 	NR_CBID,
 };
 
@@ -62,6 +64,10 @@ static inline const char *get_string_from_cbid(int cbid)
 		return "init";
 	case CBID_EXIT:
 		return "exit";
+	case CBID_SET_CPUMASK:
+		return "set_cpumask";
+	case CBID_SET_WEIGHT:
+		return "set_weight";
 	default:
 		return "UNKNOWN";
 	}
@@ -136,6 +142,16 @@ struct enable_aux {
 
 struct disable_aux {
 	struct th_info th_info;
+};
+
+struct set_cpumask_aux {
+	struct th_info th_info;
+	u64 cpumask;
+};
+
+struct set_weight_aux {
+	struct th_info th_info;
+	u32 weight;
 };
 
 const u64 ENTRY_SIZE = sizeof(struct entry_header);

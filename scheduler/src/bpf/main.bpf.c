@@ -190,6 +190,38 @@ static void record_disable(u64 start, u64 end, struct task_struct *p)
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
 }
 
+static void record_set_cpumask(u64 start, u64 end, struct task_struct *p, const struct cpumask *cpumask)
+{
+	const static u64 hdr_size = sizeof(struct entry_header);
+	const static u64 buf_size = hdr_size + sizeof(struct set_cpumask_aux);
+
+	__attribute__((aligned(8))) u8 buf[buf_size];
+	struct entry_header *hdr = (struct entry_header *) buf;
+	struct set_cpumask_aux *aux = (struct set_cpumask_aux *) &buf[hdr_size];
+
+	set_header(hdr, CBID_SET_CPUMASK, start, end);
+	set_thread_info(&aux->th_info, p);
+	aux->cpumask = cpumask->bits[0]; /* set only first 64-bit */
+
+	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
+}
+
+static void record_set_weight(u64 start, u64 end, struct task_struct *p, u32 weight)
+{
+	const static u64 hdr_size = sizeof(struct entry_header);
+	const static u64 buf_size = hdr_size + sizeof(struct set_weight_aux);
+
+	__attribute__((aligned(8))) u8 buf[buf_size];
+	struct entry_header *hdr = (struct entry_header *) buf;
+	struct set_weight_aux *aux = (struct set_weight_aux *) &buf[hdr_size];
+
+	set_header(hdr, CBID_SET_WEIGHT, start, end);
+	set_thread_info(&aux->th_info, p);
+	aux->weight = weight;
+
+	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
+}
+
 /*
  * Without auxiliary information.
  */
@@ -206,6 +238,7 @@ static void record_normal(s32 cbid, u64 start, u64 end)
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
 }
 
+// MARK: init/..
 /*******************************************************************************
  * Callbacks for initialization and deinitialization
  */
@@ -281,6 +314,7 @@ void BPF_STRUCT_OPS(scheduler_exit_task, struct task_struct *p,
 	record_exit_task(start, end, p, args->cancelled);
 }
 
+// MARK: enable/..
 void BPF_STRUCT_OPS(scheduler_enable, struct task_struct *p)
 {
 	u64 start, end;
@@ -313,6 +347,7 @@ void BPF_STRUCT_OPS(scheduler_disable, struct task_struct *p)
 	record_disable(start, end, p);
 }
 
+// MARK: runnable/..
 /*******************************************************************************
  * Callbacks for inspecting task state transitions
  */
@@ -381,6 +416,7 @@ void BPF_STRUCT_OPS(scheduler_quiescent, struct task_struct *p, u64 deq_flags)
 	record_quiescent(start, end, p, deq_flags);
 }
 
+// MARK: select_cpu/..
 /*******************************************************************************
  * Callbacks for scheduling decisions
  */
@@ -437,6 +473,44 @@ void BPF_STRUCT_OPS(scheduler_dispatch, s32 cpu, struct task_struct *prev)
 	record_normal(CBID_DISPATCH, start, end);
 }
 
+// MARK: set_cpumask/..
+/*******************************************************************************
+ * Callbacks for changing the scheduling policy
+ */
+
+void BPF_STRUCT_OPS(scheduler_set_cpumask, struct task_struct *p,
+                    const struct cpumask *cpumask)
+{
+	u64 start, end;
+
+	start = bpf_ktime_get_boot_ns();
+
+	// ================= implementation ===================== //
+
+	ops_set_cpumask(p, cpumask);
+
+	// ====================================================== //
+
+	end = bpf_ktime_get_boot_ns();
+	record_set_cpumask(start, end, p, cpumask);
+}
+
+void BPF_STRUCT_OPS(scheduler_set_weight, struct task_struct *p, u32 weight)
+{
+	u64 start, end;
+
+	start = bpf_ktime_get_boot_ns();
+
+	// ================= implementation ===================== //
+
+	ops_set_weight(p, weight);
+
+	// ====================================================== //
+
+	end = bpf_ktime_get_boot_ns();
+	record_set_weight(start, end, p, weight);
+}
+
 SCX_OPS_DEFINE(scheduler_ops,
 	.init		= (void *) scheduler_init,
 	.exit		= (void *) scheduler_exit,
@@ -454,5 +528,8 @@ SCX_OPS_DEFINE(scheduler_ops,
 	.select_cpu	= (void *) scheduler_select_cpu,
 	.enqueue	= (void *) scheduler_enqueue,
 	.dispatch	= (void *) scheduler_dispatch,
+
+	.set_cpumask	= (void *) scheduler_set_cpumask,
+	.set_weight	= (void *) scheduler_set_weight,
 
 	.name		= "scheduler");
