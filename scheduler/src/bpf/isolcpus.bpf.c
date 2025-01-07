@@ -54,12 +54,12 @@ static bool task_is_isolated(struct task_struct *p)
         bpf_rcu_read_unlock();
 
         if (housekeeped && isolated) {
-                bpf_printk("[?] %s[%d] is housekeeped and isolated", p->comm, p->pid);
+                // bpf_printk("[?] %s[%d] is housekeeped and isolated", p->comm, p->pid);
                 return false;
         }
 
         if (isolated) {
-                // bpf_printk("[*] %s[%d] is isolated", p->comm, p->pid);
+                bpf_printk("[*] %s[%d] is isolated", p->comm, p->pid);
                 return true;
         }
 
@@ -166,62 +166,18 @@ void ops_disable(struct task_struct *p)
 
 void ops_runnable(struct task_struct *p, u64 enq_flags)
 {
-        struct task_ctx *taskc;
-
-        taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
-	if (!taskc) {
-		scx_bpf_error("[!] runnable: Failed to get task local storage");
-		return;
-	}
-
-        if (taskc->isolated && p->pid != 0) {
-                bpf_printk("%s[%d] (isolated) runnable");
-        }
 }
 
 void ops_running(struct task_struct *p)
 {
-        struct task_ctx *taskc;
-
-        taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
-	if (!taskc) {
-		scx_bpf_error("[!] running: Failed to get task local storage");
-		return;
-	}
-
-        if (taskc->isolated && p->pid != 0) {
-                bpf_printk("%s[%d] (isolated) running");
-        }
 }
 
 void ops_stopping(struct task_struct *p, bool runnable)
 {
-        struct task_ctx *taskc;
-
-        taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
-	if (!taskc) {
-		scx_bpf_error("[!] stopping: Failed to get task local storage");
-		return;
-	}
-
-        if (taskc->isolated && p->pid != 0) {
-                bpf_printk("%s[%d] (isolated) stopping");
-        }
 }
 
 void ops_quiescent(struct task_struct *p, u64 deq_flags)
 {
-        struct task_ctx *taskc;
-
-        taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
-	if (!taskc) {
-		scx_bpf_error("[!] quiescent: Failed to get task local storage");
-		return;
-	}
-
-        if (taskc->isolated && p->pid != 0) {
-                bpf_printk("%s[%d] (isolated) quiescent");
-        }
 }
 
 // MARK: select_cpu
