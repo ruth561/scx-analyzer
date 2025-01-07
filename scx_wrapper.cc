@@ -1,6 +1,7 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/* Copyright (C) 2024 Takumi Jin */
 #include <cstdint>
 #include <cstdio>
-#include <ios>
 #include <perfetto.h>
 #include <fcntl.h>
 

@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/* Copyright (C) 2024 Takumi Jin */
 #include <perfetto.h>
 #include <fcntl.h>
 #include <signal.h>
