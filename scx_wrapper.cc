@@ -224,6 +224,61 @@ static std::string get_scx_enq_flags_str(u64 enq_flags)
 	return ret;
 }
 
+/*
+ * Converts wake_flags to std::string.
+ */
+static std::string get_scx_wake_flags_str(u64 wake_flags)
+{
+	std::string ret = std::to_string(wake_flags);
+	ret += " ";
+
+	if (wake_flags == 0) {
+		ret += "(NONE)";
+		return ret;
+	}
+
+	ret += "(";
+
+	if (wake_flags & WF_FORK) {
+		wake_flags &= ~WF_FORK;
+		push_flag_str(ret, "WF_FORK", wake_flags == 0);
+	}
+
+	if (wake_flags & WF_TTWU) {
+		wake_flags &= ~WF_TTWU;
+		push_flag_str(ret, "WF_TTWU", wake_flags == 0);
+	}
+
+	if (wake_flags & WF_SYNC) {
+		wake_flags &= ~WF_SYNC;
+		push_flag_str(ret, "WF_SYNC", wake_flags == 0);
+	}
+
+	if (wake_flags & WF_MIGRATED) {
+		wake_flags &= ~WF_MIGRATED;
+		push_flag_str(ret, "WF_MIGRATED", wake_flags == 0);
+	}
+
+	if (wake_flags & WF_CURRENT_CPU) {
+		wake_flags &= ~WF_CURRENT_CPU;
+		push_flag_str(ret, "WF_CURRENT_CPU", wake_flags == 0);
+	}
+
+	if (wake_flags & WF_RQ_SELECTED) {
+		wake_flags &= ~WF_RQ_SELECTED;
+		push_flag_str(ret, "WF_RQ_SELECTED", wake_flags == 0);
+	}
+
+	if (wake_flags) {
+		char flag_str[0x20];
+		snprintf(flag_str, 0x20, "UNKNOWN=%llx", wake_flags);
+		push_flag_str(ret, flag_str, true);
+	}
+
+	ret += ")";
+	return ret;
+}
+
 void trace_select_cpu(struct entry_header *hdr, struct select_cpu_aux *aux)
 {
 	auto track = get_track(hdr->cpu);
@@ -234,7 +289,7 @@ void trace_select_cpu(struct entry_header *hdr, struct select_cpu_aux *aux)
 		    "CPU", hdr->cpu,
 		    "thread", get_thread_name(&aux->th_info),
 		    "prev_cpu", aux->prev_cpu,
-		    "wake_flags", aux->wake_flags,
+		    "wake_flags", get_scx_wake_flags_str(aux->wake_flags),
 		    "selected_cpu", aux->selected_cpu);
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }

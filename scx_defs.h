@@ -15,3 +15,14 @@ enum scx_enq_flags {
 	SCX_ENQ_CLEAR_OPSS	= 1LLU << 56,
 	SCX_ENQ_DSQ_PRIQ	= 1LLU << 57,
 };
+
+enum scx_wake_flags {
+	// WF_EXEC			= 0x02, /* not used in scx */
+	WF_FORK			= 0x04,
+	WF_TTWU			= 0x08,
+
+	WF_SYNC			= 0x10,
+	WF_MIGRATED		= 0x20,
+	WF_CURRENT_CPU		= 0x40,
+	WF_RQ_SELECTED		= 0x80,
+};
