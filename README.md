@@ -35,7 +35,7 @@ $ tools/ninja -C out/linux tracebox traced traced_probes perfetto
 
 After completing these steps, the *tracebox* binary will be located at *perfetto/out/linux/tracebox*.
 
-## Scheduler
+## scheduler
 
 To build the scheduler, run the following commands:
 
@@ -44,7 +44,7 @@ $ cd scheduler
 $ cargo build
 ```
 
-## SCX analyzer
+## scx-analyzer
 
 To build the scx-analyzer, use the following commands:
 
@@ -65,7 +65,7 @@ $ sudo scheduler/target/debug/scheduler
 
 ```
 
-## Execute the SCX analyzer
+## Execute the scx-analyzer
 
 First, run *traced* in the background:
 
@@ -74,7 +74,7 @@ $ sudo perfetto/out/linux/tracebox traced --background
 $ sudo perfetto/out/linux/tracebox traced_probes --background
 ```
 
-Next, execute the SCX analyzer:
+Next, execute the scx-analyzer:
 
 ```console
 $ sudo build/scx_analyzer 
@@ -85,7 +85,7 @@ Successfully open output file! fd=7
 
 # Output
 
-After running the SCX Analyzer, an *output.perfetto-trace* file will be generated in the current directory.
+After running the scx-analyzer, an *output.perfetto-trace* file will be generated in the current directory.
 To view the trace data, use the Perfetto UI. Open the file in the Perfetto Trace Viewer for a detailed visualization of the collected trace data.
 
 SCX events are located in 'Misc Global Tracks' section and are organized into per-CPU tracks.
