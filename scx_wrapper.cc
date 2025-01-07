@@ -1,10 +1,12 @@
 #include <cstdint>
 #include <cstdio>
+#include <ios>
 #include <perfetto.h>
 #include <fcntl.h>
 
 #include "utils.h"
 #include "scx_wrapper.h"
+#include "scx_defs.h"
 #include "scheduler/src/bpf/intf.h"
 
 PERFETTO_DEFINE_CATEGORIES(
@@ -156,6 +158,71 @@ std::string get_thread_name(struct th_info *th_info)
 	return ret;
 }
 
+void push_flag_str(std::string &s, const char *flag_str, bool is_last)
+{
+	s += flag_str;
+	if (!is_last) {
+		s += " | ";
+	}
+}
+
+/*
+ * Converts enq_flags to std::string.
+ *
+ * ex) 0x409 ==> 1033 (WAKEUP | CPU_SELECTED | UNKNOWN=8)
+ */
+static std::string get_scx_enq_flags_str(u64 enq_flags)
+{
+	std::string ret = std::to_string(enq_flags);
+	ret += " ";
+
+	if (enq_flags == 0) {
+		ret += "(NONE)";
+		return ret;
+	}
+
+	ret += "(";
+
+	if (enq_flags & SCX_ENQ_WAKEUP) {
+		enq_flags &= ~SCX_ENQ_WAKEUP;
+		push_flag_str(ret, "SCX_ENQ_WAKEUP", enq_flags == 0);
+	}
+
+	if (enq_flags & SCX_ENQ_HEAD) {
+		enq_flags &= ~SCX_ENQ_HEAD;
+		push_flag_str(ret, "SCX_ENQ_HEAD", enq_flags == 0);
+	}
+
+	if (enq_flags & SCX_ENQ_CPU_SELECTED) {
+		enq_flags &= ~SCX_ENQ_CPU_SELECTED;
+		push_flag_str(ret, "SCX_ENQ_CPU_SELECTED", enq_flags == 0);
+	}
+
+	if (enq_flags & SCX_ENQ_PREEMPT) {
+		enq_flags &= ~SCX_ENQ_PREEMPT;
+		push_flag_str(ret, "SCX_ENQ_PREEMPT", enq_flags == 0);
+	}
+
+	if (enq_flags & SCX_ENQ_REENQ) {
+		enq_flags &= ~SCX_ENQ_REENQ;
+		push_flag_str(ret, "SCX_ENQ_REENQ", enq_flags == 0);
+	}
+
+	if (enq_flags & SCX_ENQ_LAST) {
+		enq_flags &= ~SCX_ENQ_LAST;
+		push_flag_str(ret, "SCX_ENQ_LAST", enq_flags == 0);
+	}
+
+	if (enq_flags) {
+		char flag_str[0x20];
+		snprintf(flag_str, 0x20, "UNKNOWN=%llx", enq_flags);
+		push_flag_str(ret, flag_str, true);
+	}
+
+	ret += ")";
+	return ret;
+}
+
 void trace_select_cpu(struct entry_header *hdr, struct select_cpu_aux *aux)
 {
 	auto track = get_track(hdr->cpu);
@@ -180,7 +247,7 @@ void trace_enqueue(struct entry_header *hdr, struct enqueue_aux *aux)
 		    (uint64_t) hdr->start,
 		    "CPU", hdr->cpu,
 		    "thread", get_thread_name(&aux->th_info),
-		    "enq_flags", aux->enq_flags);
+		    "enq_flags", get_scx_enq_flags_str(aux->enq_flags));
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
 
@@ -193,7 +260,7 @@ void trace_runnable(struct entry_header *hdr, struct runnable_aux *aux)
 		    (uint64_t) hdr->start,
 		    "CPU", hdr->cpu,
 		    "thread", get_thread_name(&aux->th_info),
-		    "enq_flags", aux->enq_flags);
+		    "enq_flags", get_scx_enq_flags_str(aux->enq_flags));
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
 
