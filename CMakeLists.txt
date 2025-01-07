@@ -7,8 +7,8 @@ include_directories(perfetto/sdk)
 add_library(perfetto STATIC perfetto/sdk/perfetto.cc)
 
 # libbpf
-set(LIBBPF_INCLUDE_DIR /usr/local/include)
-set(LIBBPF_LIB /usr/local/lib64/libbpf.a)
+set(LIBBPF_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/bpf/usr/include)
+set(LIBBPF_LIB ${CMAKE_SOURCE_DIR}/bpf/usr/lib64/libbpf.a)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBELF REQUIRED libelf)

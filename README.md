@@ -1,8 +1,39 @@
-# SCX Analyzer
+# scx-analyzer
 
-scx-analyzer traces scx callback invocations and display GUI using perfetto.
+The scx-analyzer traces SCX callback invocations and displays them in a GUI using Perfetto.
 
 # How to build
+
+## Prerequisites
+
+### 1. Initialize and update the Git submodules
+
+```console
+$ git submodule init
+$ git submodule update
+```
+
+### 2. Build libbpf
+
+```console
+$ cd libbpf/src
+$ make DESTDIR=../../bpf install
+```
+
+This will create the directories bpf/usr/include and bpf/usr/lib64.
+
+### 3. Build the Perfetto's tracebox
+
+Follow the [Perfetto Quickstart Documentation](https://perfetto.dev/docs/quickstart/linux-tracing) for detailed instructions. Then, execute the following commands to build the Perfetto Tracebox:
+
+```console
+$ cd perfetto
+$ tools/install-build-deps
+$ tools/gn gen --args='is_debug=false' out/linux
+$ tools/ninja -C out/linux tracebox traced traced_probes perfetto
+```
+
+After completing these steps, the *tracebox* binary will be located at *perfetto/out/linux/tracebox*.
 
 ## Scheduler
 
@@ -39,8 +70,8 @@ $ sudo scheduler/target/debug/scheduler
 First, run *traced* in the background:
 
 ```console
-$ sudo tracebox traced --background
-$ sudo tracebox traced_probes --background
+$ sudo perfetto/out/linux/tracebox traced --background
+$ sudo perfetto/out/linux/tracebox traced_probes --background
 ```
 
 Next, execute the SCX analyzer:
