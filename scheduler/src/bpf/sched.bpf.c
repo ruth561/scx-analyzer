@@ -37,6 +37,15 @@ void ops_exit_task(struct task_struct *p, struct scx_exit_task_args *args)
         return;
 }
 
+// MARK: enable/disable
+void ops_enable(struct task_struct *p)
+{
+}
+
+void ops_disable(struct task_struct *p)
+{
+}
+
 // MARK: state transition
 /*******************************************************************************
  * Callbacks for inspecting task state transitions

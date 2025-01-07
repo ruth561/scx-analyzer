@@ -288,6 +288,8 @@ void BPF_STRUCT_OPS(scheduler_enable, struct task_struct *p)
 
 	// ================= implementation ===================== //
 
+	ops_enable(p);
+
 	// ====================================================== //
 
 	end = bpf_ktime_get_boot_ns();
@@ -301,6 +303,8 @@ void BPF_STRUCT_OPS(scheduler_disable, struct task_struct *p)
 	start = bpf_ktime_get_boot_ns();
 
 	// ================= implementation ===================== //
+
+	ops_disable(p);
 
 	// ====================================================== //
 
