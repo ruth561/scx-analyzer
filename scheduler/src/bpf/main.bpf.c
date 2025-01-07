@@ -4,8 +4,6 @@
 #include "vmlinux.h"
 #include <scx/common.bpf.h>
 #include <bpf/bpf_helpers.h>
-#define SHARED_DSQ 0
-UEI_DEFINE(uei);
 char _license[] SEC("license") = "GPL";
 
 #include "sched.bpf.c"
@@ -213,16 +211,24 @@ static void record_normal(s32 cbid, u64 start, u64 end)
 
 s32 BPF_STRUCT_OPS_SLEEPABLE(scheduler_init)
 {
-	return scx_bpf_create_dsq(SHARED_DSQ, -1);
+	s32 ret;
+	u64 start, end;
+
+	start = bpf_ktime_get_boot_ns();
+
+	// ================= implementation ===================== //
+
+	ret = ops_init();
+
+	// ====================================================== //
+
+	end = bpf_ktime_get_boot_ns();
+	record_normal(CBID_INIT, start, end);
+
+	return ret;
 }
 
 void BPF_STRUCT_OPS_SLEEPABLE(scheduler_exit, struct scx_exit_info *ei)
-{
-	UEI_RECORD(uei, ei);
-}
-
-s32 BPF_STRUCT_OPS_SLEEPABLE(scheduler_init_task, struct task_struct *p,
-			     struct scx_init_task_args *args)
 {
 	u64 start, end;
 
@@ -230,11 +236,31 @@ s32 BPF_STRUCT_OPS_SLEEPABLE(scheduler_init_task, struct task_struct *p,
 
 	// ================= implementation ===================== //
 
+	ops_exit(ei);
+
+	// ====================================================== //
+
+	end = bpf_ktime_get_boot_ns();
+	record_normal(CBID_EXIT, start, end);
+}
+
+s32 BPF_STRUCT_OPS_SLEEPABLE(scheduler_init_task, struct task_struct *p,
+			     struct scx_init_task_args *args)
+{
+	s32 ret;
+	u64 start, end;
+
+	start = bpf_ktime_get_boot_ns();
+
+	// ================= implementation ===================== //
+
+	ret = ops_init_task(p, args);
+
 	// ====================================================== //
 
 	end = bpf_ktime_get_boot_ns();
 	record_init_task(start, end, p, args->fork);
-	return 0;
+	return ret;
 }
 
 void BPF_STRUCT_OPS(scheduler_exit_task, struct task_struct *p,
@@ -245,6 +271,8 @@ void BPF_STRUCT_OPS(scheduler_exit_task, struct task_struct *p,
 	start = bpf_ktime_get_boot_ns();
 
 	// ================= implementation ===================== //
+
+	ops_exit_task(p, args);
 
 	// ====================================================== //
 
@@ -292,6 +320,8 @@ void BPF_STRUCT_OPS(scheduler_runnable, struct task_struct *p, u64 enq_flags)
 
 	// ================= implementation ===================== //
 
+	ops_runnable(p, enq_flags);
+
 	// ====================================================== //
 
 	end = bpf_ktime_get_boot_ns();
@@ -305,6 +335,8 @@ void BPF_STRUCT_OPS(scheduler_running, struct task_struct *p)
 	start = bpf_ktime_get_boot_ns();
 
 	// ================= implementation ===================== //
+
+	ops_running(p);
 
 	// ====================================================== //
 
@@ -320,6 +352,8 @@ void BPF_STRUCT_OPS(scheduler_stopping, struct task_struct *p, bool runnable)
 
 	// ================= implementation ===================== //
 
+	ops_stopping(p, runnable);
+
 	// ====================================================== //
 
 	end = bpf_ktime_get_boot_ns();
@@ -333,6 +367,8 @@ void BPF_STRUCT_OPS(scheduler_quiescent, struct task_struct *p, u64 deq_flags)
 	start = bpf_ktime_get_boot_ns();
 
 	// ================= implementation ===================== //
+
+	ops_quiescent(p, deq_flags);
 
 	// ====================================================== //
 
@@ -366,15 +402,13 @@ s32 BPF_STRUCT_OPS(scheduler_select_cpu, struct task_struct *p, s32 prev_cpu,
 
 void BPF_STRUCT_OPS(scheduler_enqueue, struct task_struct *p, u64 enq_flags)
 {
-	u64 slice;
 	u64 start, end;
 
 	start = bpf_ktime_get_boot_ns();
 
 	// ================= implementation ===================== //
 
-	slice = 5000000u / scx_bpf_dsq_nr_queued(SHARED_DSQ);
-	scx_bpf_dispatch(p, SHARED_DSQ, slice, enq_flags);
+	ops_enqueue(p, enq_flags);
 
 	// ====================================================== //
 
@@ -390,7 +424,7 @@ void BPF_STRUCT_OPS(scheduler_dispatch, s32 cpu, struct task_struct *prev)
 
 	// ================= implementation ===================== //
 
-	scx_bpf_consume(SHARED_DSQ);
+	ops_dispatch(cpu, prev);
 
 	// ====================================================== //
 

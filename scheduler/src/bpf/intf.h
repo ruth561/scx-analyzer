@@ -58,6 +58,10 @@ static inline const char *get_string_from_cbid(int cbid)
 		return "enable";
 	case CBID_DISABLE:
 		return "disable";
+	case CBID_INIT:
+		return "init";
+	case CBID_EXIT:
+		return "exit";
 	default:
 		return "UNKNOWN";
 	}
