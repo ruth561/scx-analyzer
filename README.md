@@ -17,7 +17,7 @@ $ git submodule update
 
 ```console
 $ cd libbpf/src
-$ make DESTDIR=_INSTALL install
+$ make DESTDIR=../../_INSTALL install
 ```
 
 ### 3. Build the Perfetto's tracebox
