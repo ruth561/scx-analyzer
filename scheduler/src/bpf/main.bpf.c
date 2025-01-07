@@ -24,6 +24,12 @@ static void set_header(struct entry_header *header, u32 cbid, u64 start, u64 end
 	header->end = end;
 }
 
+static void set_thread_info(struct th_info *th_info, struct task_struct *p)
+{
+	th_info->pid = p->pid;
+	__builtin_memcpy(&th_info->comm, &p->comm, 16);
+}
+
 static void record_select_cpu(u64 start, u64 end, struct task_struct *p, s32 prev_cpu, u64 wake_flags, s32 selected_cpu)
 {
 	const static u64 hdr_size = sizeof(struct entry_header);
@@ -34,7 +40,7 @@ static void record_select_cpu(u64 start, u64 end, struct task_struct *p, s32 pre
 	struct select_cpu_aux *aux = (struct select_cpu_aux *) &buf[hdr_size];
 
 	set_header(hdr, CBID_SELECT_CPU, start, end);
-	aux->pid = p->pid;
+	set_thread_info(&aux->th_info, p);
 	aux->prev_cpu = prev_cpu;
 	aux->wake_flags = wake_flags;
 	aux->selected_cpu = selected_cpu;
@@ -52,7 +58,7 @@ static void record_enqueue(u64 start, u64 end, struct task_struct *p, u64 enq_fl
 	struct enqueue_aux *aux = (struct enqueue_aux *) &buf[hdr_size];
 
 	set_header(hdr, CBID_ENQUEUE, start, end);
-	aux->pid = p->pid;
+	set_thread_info(&aux->th_info, p);
 	aux->enq_flags = enq_flags;
 
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
@@ -68,7 +74,7 @@ static void record_runnable(u64 start, u64 end, struct task_struct *p, u64 enq_f
 	struct runnable_aux *aux = (struct runnable_aux *) &buf[hdr_size];
 
 	set_header(hdr, CBID_RUNNABLE, start, end);
-	aux->pid = p->pid;
+	set_thread_info(&aux->th_info, p);
 	aux->enq_flags = enq_flags;
 
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
@@ -84,7 +90,7 @@ static void record_stopping(u64 start, u64 end, struct task_struct *p, s32 runna
 	struct stopping_aux *aux = (struct stopping_aux *) &buf[hdr_size];
 
 	set_header(hdr, CBID_STOPPING, start, end);
-	aux->pid = p->pid;
+	set_thread_info(&aux->th_info, p);
 	aux->runnable = runnable;
 
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
@@ -100,7 +106,7 @@ static void record_running(u64 start, u64 end, struct task_struct *p)
 	struct running_aux *aux = (struct running_aux *) &buf[hdr_size];
 
 	set_header(hdr, CBID_RUNNING, start, end);
-	aux->pid = p->pid;
+	set_thread_info(&aux->th_info, p);
 
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
 }
@@ -115,7 +121,7 @@ static void record_quiescent(u64 start, u64 end, struct task_struct *p, u64 deq_
 	struct quiescent_aux *aux = (struct quiescent_aux *) &buf[hdr_size];
 
 	set_header(hdr, CBID_QUIESCENT, start, end);
-	aux->pid = p->pid;
+	set_thread_info(&aux->th_info, p);
 	aux->deq_flags = deq_flags;
 
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
@@ -131,7 +137,7 @@ static void record_init_task(u64 start, u64 end, struct task_struct *p, s32 fork
 	struct init_task_aux *aux = (struct init_task_aux *) &buf[hdr_size];
 
 	set_header(hdr, CBID_INIT_TASK, start, end);
-	aux->pid = p->pid;
+	set_thread_info(&aux->th_info, p);
 	aux->fork = fork;
 
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
@@ -147,7 +153,7 @@ static void record_exit_task(u64 start, u64 end, struct task_struct *p, s32 canc
 	struct exit_task_aux *aux = (struct exit_task_aux *) &buf[hdr_size];
 
 	set_header(hdr, CBID_EXIT_TASK, start, end);
-	aux->pid = p->pid;
+	set_thread_info(&aux->th_info, p);
 	aux->cancelled = cancelled;
 
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
@@ -163,7 +169,7 @@ static void record_enable(u64 start, u64 end, struct task_struct *p)
 	struct enable_aux *aux = (struct enable_aux *) &buf[hdr_size];
 
 	set_header(hdr, CBID_ENABLE, start, end);
-	aux->pid = p->pid;
+	set_thread_info(&aux->th_info, p);
 
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
 }
@@ -178,7 +184,7 @@ static void record_disable(u64 start, u64 end, struct task_struct *p)
 	struct disable_aux *aux = (struct disable_aux *) &buf[hdr_size];
 
 	set_header(hdr, CBID_DISABLE, start, end);
-	aux->pid = p->pid;
+	set_thread_info(&aux->th_info, p);
 
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
 }

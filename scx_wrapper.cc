@@ -147,6 +147,15 @@ void stop_perfetto_trace(void)
 	close(fd);
 }
 
+std::string get_thread_name(struct th_info *th_info)
+{
+	std::string ret = th_info->comm;
+	ret += "[";
+	ret += std::to_string(th_info->pid);
+	ret += "]";
+	return ret;
+}
+
 void trace_select_cpu(struct entry_header *hdr, struct select_cpu_aux *aux)
 {
 	auto track = get_track(hdr->cpu);
@@ -155,7 +164,7 @@ void trace_select_cpu(struct entry_header *hdr, struct select_cpu_aux *aux)
 		    track,
 		    (uint64_t) hdr->start,
 		    "CPU", hdr->cpu,
-		    "pid", aux->pid,
+		    "thread", get_thread_name(&aux->th_info),
 		    "prev_cpu", aux->prev_cpu,
 		    "wake_flags", aux->wake_flags,
 		    "selected_cpu", aux->selected_cpu);
@@ -170,7 +179,7 @@ void trace_enqueue(struct entry_header *hdr, struct enqueue_aux *aux)
 		    track,
 		    (uint64_t) hdr->start,
 		    "CPU", hdr->cpu,
-		    "pid", aux->pid,
+		    "thread", get_thread_name(&aux->th_info),
 		    "enq_flags", aux->enq_flags);
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
@@ -183,7 +192,7 @@ void trace_runnable(struct entry_header *hdr, struct runnable_aux *aux)
 		    track,
 		    (uint64_t) hdr->start,
 		    "CPU", hdr->cpu,
-		    "pid", aux->pid,
+		    "thread", get_thread_name(&aux->th_info),
 		    "enq_flags", aux->enq_flags);
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
@@ -196,7 +205,7 @@ void trace_running(struct entry_header *hdr, struct running_aux *aux)
 		    track,
 		    (uint64_t) hdr->start,
 		    "CPU", hdr->cpu,
-		    "pid", aux->pid);
+		"thread", get_thread_name(&aux->th_info));
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
 
@@ -208,7 +217,7 @@ void trace_stopping(struct entry_header *hdr, struct stopping_aux *aux)
 		    track,
 		    (uint64_t) hdr->start,
 		    "CPU", hdr->cpu,
-		    "pid", aux->pid,
+		    "thread", get_thread_name(&aux->th_info),
 		    "runnable", aux->runnable ? "true" : "false");
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
@@ -221,7 +230,7 @@ void trace_quiescent(struct entry_header *hdr, struct quiescent_aux *aux)
 		    track,
 		    (uint64_t) hdr->start,
 		    "CPU", hdr->cpu,
-		    "pid", aux->pid,
+		    "thread", get_thread_name(&aux->th_info),
 		    "deq_flags", aux->deq_flags);
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
@@ -234,7 +243,7 @@ void trace_init_task(struct entry_header *hdr, struct init_task_aux *aux)
 		    track,
 		    (uint64_t) hdr->start,
 		    "CPU", hdr->cpu,
-		    "pid", aux->pid,
+		    "thread", get_thread_name(&aux->th_info),
 		    "fork", aux->fork);
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
@@ -247,7 +256,7 @@ void trace_exit_task(struct entry_header *hdr, struct exit_task_aux *aux)
 		    track,
 		    (uint64_t) hdr->start,
 		    "CPU", hdr->cpu,
-		    "pid", aux->pid,
+		    "thread", get_thread_name(&aux->th_info),
 		    "cancelled", aux->cancelled);
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
@@ -260,7 +269,7 @@ void trace_enable(struct entry_header *hdr, struct enable_aux *aux)
 		    track,
 		    (uint64_t) hdr->start,
 		    "CPU", hdr->cpu,
-		    "pid", aux->pid);
+		    "thread", get_thread_name(&aux->th_info));
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
 
@@ -272,7 +281,7 @@ void trace_disable(struct entry_header *hdr, struct disable_aux *aux)
 		    track,
 		    (uint64_t) hdr->start,
 		    "CPU", hdr->cpu,
-		    "pid", aux->pid);
+		    "thread", get_thread_name(&aux->th_info));
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
 

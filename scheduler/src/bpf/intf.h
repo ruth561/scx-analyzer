@@ -77,53 +77,61 @@ struct entry_header {
 	u8 aux[];
 };
 
-struct select_cpu_aux {
+/*
+ * Thread information.
+ */
+struct th_info {
 	s32 pid;
+	char comm[16];
+};
+
+struct select_cpu_aux {
+	struct th_info th_info;
 	s32 prev_cpu;
 	u64 wake_flags;
 	s32 selected_cpu;
 };
 
 struct enqueue_aux {
-	s32 pid;
+	struct th_info th_info;
 	u64 enq_flags;
 };
 
 struct runnable_aux {
-	s32 pid;
+	struct th_info th_info;
 	u64 enq_flags;
 };
 
 struct running_aux {
-	s32 pid;
+	struct th_info th_info;
 };
 
 struct stopping_aux {
-	s32 pid;
+	struct th_info th_info;
 	s32 runnable; /* bool */
 };
 
 struct quiescent_aux {
-	s32 pid;
+	struct th_info th_info;
 	u64 deq_flags;
 };
 
 struct init_task_aux {
-	s32 pid;
+	struct th_info th_info;
 	s32 fork;
 };
 
 struct exit_task_aux {
-	s32 pid;
+	struct th_info th_info;
 	s32 cancelled;
 };
 
 struct enable_aux {
-	s32 pid;
+	struct th_info th_info;
 };
 
 struct disable_aux {
-	s32 pid;
+	struct th_info th_info;
 };
 
 const u64 ENTRY_SIZE = sizeof(struct entry_header);
