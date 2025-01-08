@@ -26,14 +26,22 @@ static int fd;
 #define SCX_TRACK_UUID	0xdeadbeefcafebabe
 #define SCX_TRACK_UUID_CPU(cpu) (SCX_TRACK_UUID + cpu)
 
-perfetto::Track get_track(s32 cpu)
+perfetto::Track get_scx_track(s32 cpu)
 {
 	return perfetto::Track::Global(SCX_TRACK_UUID_CPU(cpu));
 }
 
+#define TP_TRACK_UUID	0xabcdabcd0000000
+#define TP_TRACK_UUID_CPU(cpu) (TP_TRACK_UUID + cpu)
+
+perfetto::Track get_tp_track(s32 cpu)
+{
+	return perfetto::Track::Global(TP_TRACK_UUID_CPU(cpu));
+}
+
 void set_all_track_names()
 {
-	char track_name[0x20];
+	char track_name[0x30];
 	int nr_cpus = get_nr_cpus_system(false);
 
 	if (nr_cpus < 0) {
@@ -44,10 +52,19 @@ void set_all_track_names()
 	printf("nr_cpus: %d\n", nr_cpus);
 
 	for (int cpu = 0; cpu < nr_cpus; cpu++) {
-		auto track = get_track(cpu);
+		auto track = get_scx_track(cpu);
 		auto desc = track.Serialize();
 
-		snprintf(track_name, 0x20, "SCX Track for CPU %2d", cpu);
+		snprintf(track_name, 0x30, "SCX Track for CPU %2d", cpu);
+		desc.set_name(track_name);
+		perfetto::TrackEvent::SetTrackDescriptor(track, desc);
+	}
+
+	for (int cpu = 0; cpu < nr_cpus; cpu++) {
+		auto track = get_tp_track(cpu);
+		auto desc = track.Serialize();
+
+		snprintf(track_name, 0x30, "Tracepoint Track for CPU %2d", cpu);
 		desc.set_name(track_name);
 		perfetto::TrackEvent::SetTrackDescriptor(track, desc);
 	}
@@ -281,7 +298,7 @@ static std::string get_scx_wake_flags_str(u64 wake_flags)
 
 void trace_select_cpu(struct entry_header *hdr, struct select_cpu_aux *aux)
 {
-	auto track = get_track(hdr->cpu);
+	auto track = get_scx_track(hdr->cpu);
 
 	TRACE_EVENT("scx", "select_cpu",
 		    track,
@@ -296,7 +313,7 @@ void trace_select_cpu(struct entry_header *hdr, struct select_cpu_aux *aux)
 
 void trace_enqueue(struct entry_header *hdr, struct enqueue_aux *aux)
 {
-	auto track = get_track(hdr->cpu);
+	auto track = get_scx_track(hdr->cpu);
 
 	TRACE_EVENT("scx", "enqueue",
 		    track,
@@ -309,7 +326,7 @@ void trace_enqueue(struct entry_header *hdr, struct enqueue_aux *aux)
 
 void trace_runnable(struct entry_header *hdr, struct runnable_aux *aux)
 {
-	auto track = get_track(hdr->cpu);
+	auto track = get_scx_track(hdr->cpu);
 
 	TRACE_EVENT("scx", "runnable",
 		    track,
@@ -322,7 +339,7 @@ void trace_runnable(struct entry_header *hdr, struct runnable_aux *aux)
 
 void trace_running(struct entry_header *hdr, struct running_aux *aux)
 {
-	auto track = get_track(hdr->cpu);
+	auto track = get_scx_track(hdr->cpu);
 
 	TRACE_EVENT("scx", "running",
 		    track,
@@ -334,7 +351,7 @@ void trace_running(struct entry_header *hdr, struct running_aux *aux)
 
 void trace_stopping(struct entry_header *hdr, struct stopping_aux *aux)
 {
-	auto track = get_track(hdr->cpu);
+	auto track = get_scx_track(hdr->cpu);
 
 	TRACE_EVENT("scx", "stopping",
 		    track,
@@ -347,7 +364,7 @@ void trace_stopping(struct entry_header *hdr, struct stopping_aux *aux)
 
 void trace_quiescent(struct entry_header *hdr, struct quiescent_aux *aux)
 {
-	auto track = get_track(hdr->cpu);
+	auto track = get_scx_track(hdr->cpu);
 
 	TRACE_EVENT("scx", "quiescent",
 		    track,
@@ -360,7 +377,7 @@ void trace_quiescent(struct entry_header *hdr, struct quiescent_aux *aux)
 
 void trace_init_task(struct entry_header *hdr, struct init_task_aux *aux)
 {
-	auto track = get_track(hdr->cpu);
+	auto track = get_scx_track(hdr->cpu);
 
 	TRACE_EVENT("scx", "init_task",
 		    track,
@@ -373,7 +390,7 @@ void trace_init_task(struct entry_header *hdr, struct init_task_aux *aux)
 
 void trace_exit_task(struct entry_header *hdr, struct exit_task_aux *aux)
 {
-	auto track = get_track(hdr->cpu);
+	auto track = get_scx_track(hdr->cpu);
 
 	TRACE_EVENT("scx", "exit_task",
 		    track,
@@ -386,7 +403,7 @@ void trace_exit_task(struct entry_header *hdr, struct exit_task_aux *aux)
 
 void trace_enable(struct entry_header *hdr, struct enable_aux *aux)
 {
-	auto track = get_track(hdr->cpu);
+	auto track = get_scx_track(hdr->cpu);
 
 	TRACE_EVENT("scx", "enable",
 		    track,
@@ -398,7 +415,7 @@ void trace_enable(struct entry_header *hdr, struct enable_aux *aux)
 
 void trace_disable(struct entry_header *hdr, struct disable_aux *aux)
 {
-	auto track = get_track(hdr->cpu);
+	auto track = get_scx_track(hdr->cpu);
 
 	TRACE_EVENT("scx", "disable",
 		    track,
@@ -410,7 +427,7 @@ void trace_disable(struct entry_header *hdr, struct disable_aux *aux)
 
 void trace_set_cpumask(struct entry_header *hdr, struct set_cpumask_aux *aux)
 {
-	auto track = get_track(hdr->cpu);
+	auto track = get_scx_track(hdr->cpu);
 	char cpumask_buf[32];
 	snprintf(cpumask_buf, 32, "%llx", aux->cpumask);
 
@@ -425,7 +442,7 @@ void trace_set_cpumask(struct entry_header *hdr, struct set_cpumask_aux *aux)
 
 void trace_set_weight(struct entry_header *hdr, struct set_weight_aux *aux)
 {
-	auto track = get_track(hdr->cpu);
+	auto track = get_scx_track(hdr->cpu);
 
 	TRACE_EVENT("scx", "set_weight",
 		    track,
@@ -438,12 +455,26 @@ void trace_set_weight(struct entry_header *hdr, struct set_weight_aux *aux)
 
 void trace_normal(struct entry_header *hdr, void *_aux)
 {
-	auto track = get_track(hdr->cpu);
+	auto track = get_scx_track(hdr->cpu);
 	const char *cbstr = get_string_from_cbid(hdr->cbid);
 
 	TRACE_EVENT("scx", perfetto::DynamicString{cbstr},
 		    track,
 		    (uint64_t) hdr->start,
 		    "CPU", hdr->cpu);
+	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
+}
+
+// MARK: tracepoints
+void trace_sched_switch(struct entry_header *hdr, struct tp_sched_switch_aux *aux)
+{
+	auto track = get_tp_track(hdr->cpu);
+
+	TRACE_EVENT("scx", "sched_switch",
+		    track,
+		    (uint64_t) hdr->start,
+		    "CPU", hdr->cpu,
+		    "prev", get_thread_name(&aux->prev),
+		    "next", get_thread_name(&aux->next));
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }

@@ -33,6 +33,8 @@ enum stat_idx {
 	CBID_SET_CPUMASK,
 	CBID_SET_WEIGHT,
 	NR_CBID,
+
+	TP_SCHED_SWITCH = 0x1000,
 };
 
 static inline const char *get_string_from_cbid(int cbid)
@@ -68,6 +70,8 @@ static inline const char *get_string_from_cbid(int cbid)
 		return "set_cpumask";
 	case CBID_SET_WEIGHT:
 		return "set_weight";
+	case TP_SCHED_SWITCH:
+		return "sched_switch";
 	default:
 		return "UNKNOWN";
 	}
@@ -152,6 +156,11 @@ struct set_cpumask_aux {
 struct set_weight_aux {
 	struct th_info th_info;
 	u32 weight;
+};
+
+struct tp_sched_switch_aux {
+	struct th_info prev;
+	struct th_info next;
 };
 
 const u64 ENTRY_SIZE = sizeof(struct entry_header);

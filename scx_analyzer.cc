@@ -71,6 +71,9 @@ int ring_buffer_handler(void *ctx, void *data, size_t size)
 	case CBID_SET_WEIGHT:
 		trace_set_weight(hdr, (struct set_weight_aux *) aux);
 		break;
+	case TP_SCHED_SWITCH:
+		trace_sched_switch(hdr, (struct tp_sched_switch_aux *) aux);
+		break;
 	case CBID_DISPATCH:
 		/* fallthrough */
 	default:

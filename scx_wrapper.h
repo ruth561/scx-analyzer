@@ -22,3 +22,5 @@ void trace_set_cpumask(struct entry_header *hdr, struct set_cpumask_aux *aux);
 void trace_set_weight(struct entry_header *hdr, struct set_weight_aux *aux);
 
 void trace_normal(struct entry_header *hdr, void *_aux);
+
+void trace_sched_switch(struct entry_header *hdr, struct tp_sched_switch_aux *aux);

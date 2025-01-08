@@ -40,9 +40,16 @@ static void set_thread_info(struct th_info *th_info, struct task_struct *p)
 static bool should_record(s32 cbid)
 {
 	s32 cpu = bpf_get_smp_processor_id();
-	if (!bpf_cpumask_test_cpu(cpu, &record_cpumask.cpumask))
-		return false;
-	return true;
+
+	/*
+	* Since bpf_cpumask_test_cpu cannot be invoked from a tracepoint,
+	* the check is performed using the lower 64 bits.
+	*/
+	if (record_cpumask.cpumask.bits[0] & (1 << cpu)) {
+		return true;
+	}
+
+	return false;
 }
 
 static void record_select_cpu(u64 start, u64 end, struct task_struct *p, s32 prev_cpu, u64 wake_flags, s32 selected_cpu)
@@ -586,3 +593,40 @@ SCX_OPS_DEFINE(scheduler_ops,
 	.set_weight	= (void *) scheduler_set_weight,
 
 	.name		= "scheduler");
+
+// MARK: tracepoints
+
+struct tp_sched_switch_format {
+        u64 dummy;
+        char prev_comm[16];
+        s32 prev_pid;
+        s32 prev_prio;
+        s64 prev_state;
+        char next_comm[16];
+        s32 next_pid;
+        s32 next_prio;
+};
+
+SEC("tp/sched/sched_switch")
+void tp_sched_switch(struct tp_sched_switch_format *ctx)
+{
+	const static u64 hdr_size = sizeof(struct entry_header);
+	const static u64 buf_size = hdr_size + sizeof(struct tp_sched_switch_aux);
+
+	__attribute__((aligned(8))) u8 buf[buf_size];
+	struct entry_header *hdr = (struct entry_header *) buf;
+	struct tp_sched_switch_aux *aux = (struct tp_sched_switch_aux *) &buf[hdr_size];
+	u64 now = bpf_ktime_get_boot_ns();
+
+	if (!should_record(TP_SCHED_SWITCH))
+		return;
+
+	set_header(hdr, TP_SCHED_SWITCH, now, now + 100); /* 1000 is dummy */
+	
+	aux->prev.pid = ctx->prev_pid;
+	__builtin_memcpy(&aux->prev.comm, &ctx->prev_comm, 16);
+	aux->next.pid = ctx->next_pid;
+	__builtin_memcpy(&aux->next.comm, &ctx->next_comm, 16);
+
+	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
+}
