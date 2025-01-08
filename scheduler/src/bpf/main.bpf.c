@@ -35,6 +35,7 @@ static void set_thread_info(struct th_info *th_info, struct task_struct *p)
 
 /*
  * Check if it should be recorded at this time?
+ * TODO: Implement filtering for each ops callback
  */
 static bool should_record(s32 cbid)
 {
