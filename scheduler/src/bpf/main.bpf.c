@@ -16,6 +16,8 @@ struct {
 	__uint(max_entries, BPF_RINGBUF_SIZE);
 } cb_history_rb SEC(".maps");
 
+struct bpf_cpumask record_cpumask;
+
 static void set_header(struct entry_header *header, u32 cbid, u64 start, u64 end)
 {
 	s32 cpu = bpf_get_smp_processor_id();
@@ -31,6 +33,17 @@ static void set_thread_info(struct th_info *th_info, struct task_struct *p)
 	__builtin_memcpy(&th_info->comm, &p->comm, 16);
 }
 
+/*
+ * Check if it should be recorded at this time?
+ */
+static bool should_record(s32 cbid)
+{
+	s32 cpu = bpf_get_smp_processor_id();
+	if (!bpf_cpumask_test_cpu(cpu, &record_cpumask.cpumask))
+		return false;
+	return true;
+}
+
 static void record_select_cpu(u64 start, u64 end, struct task_struct *p, s32 prev_cpu, u64 wake_flags, s32 selected_cpu)
 {
 	const static u64 hdr_size = sizeof(struct entry_header);
@@ -39,6 +52,9 @@ static void record_select_cpu(u64 start, u64 end, struct task_struct *p, s32 pre
 	u8 buf[buf_size];
 	struct entry_header *hdr = (struct entry_header *) buf;
 	struct select_cpu_aux *aux = (struct select_cpu_aux *) &buf[hdr_size];
+
+	if (!should_record(CBID_SELECT_CPU))
+		return;
 
 	set_header(hdr, CBID_SELECT_CPU, start, end);
 	set_thread_info(&aux->th_info, p);
@@ -58,6 +74,9 @@ static void record_enqueue(u64 start, u64 end, struct task_struct *p, u64 enq_fl
 	struct entry_header *hdr = (struct entry_header *) buf;
 	struct enqueue_aux *aux = (struct enqueue_aux *) &buf[hdr_size];
 
+	if (!should_record(CBID_ENQUEUE))
+		return;
+
 	set_header(hdr, CBID_ENQUEUE, start, end);
 	set_thread_info(&aux->th_info, p);
 	aux->enq_flags = enq_flags;
@@ -73,6 +92,9 @@ static void record_runnable(u64 start, u64 end, struct task_struct *p, u64 enq_f
 	__attribute__((aligned(8))) u8 buf[buf_size];
 	struct entry_header *hdr = (struct entry_header *) buf;
 	struct runnable_aux *aux = (struct runnable_aux *) &buf[hdr_size];
+
+	if (!should_record(CBID_RUNNABLE))
+		return;
 
 	set_header(hdr, CBID_RUNNABLE, start, end);
 	set_thread_info(&aux->th_info, p);
@@ -90,6 +112,9 @@ static void record_stopping(u64 start, u64 end, struct task_struct *p, s32 runna
 	struct entry_header *hdr = (struct entry_header *) buf;
 	struct stopping_aux *aux = (struct stopping_aux *) &buf[hdr_size];
 
+	if (!should_record(CBID_STOPPING))
+		return;
+
 	set_header(hdr, CBID_STOPPING, start, end);
 	set_thread_info(&aux->th_info, p);
 	aux->runnable = runnable;
@@ -106,6 +131,9 @@ static void record_running(u64 start, u64 end, struct task_struct *p)
 	struct entry_header *hdr = (struct entry_header *) buf;
 	struct running_aux *aux = (struct running_aux *) &buf[hdr_size];
 
+	if (!should_record(CBID_RUNNING))
+		return;
+
 	set_header(hdr, CBID_RUNNING, start, end);
 	set_thread_info(&aux->th_info, p);
 
@@ -120,6 +148,9 @@ static void record_quiescent(u64 start, u64 end, struct task_struct *p, u64 deq_
 	__attribute__((aligned(8))) u8 buf[buf_size];
 	struct entry_header *hdr = (struct entry_header *) buf;
 	struct quiescent_aux *aux = (struct quiescent_aux *) &buf[hdr_size];
+
+	if (!should_record(CBID_QUIESCENT))
+		return;
 
 	set_header(hdr, CBID_QUIESCENT, start, end);
 	set_thread_info(&aux->th_info, p);
@@ -137,6 +168,9 @@ static void record_init_task(u64 start, u64 end, struct task_struct *p, s32 fork
 	struct entry_header *hdr = (struct entry_header *) buf;
 	struct init_task_aux *aux = (struct init_task_aux *) &buf[hdr_size];
 
+	if (!should_record(CBID_INIT_TASK))
+		return;
+
 	set_header(hdr, CBID_INIT_TASK, start, end);
 	set_thread_info(&aux->th_info, p);
 	aux->fork = fork;
@@ -152,6 +186,9 @@ static void record_exit_task(u64 start, u64 end, struct task_struct *p, s32 canc
 	__attribute__((aligned(8))) u8 buf[buf_size];
 	struct entry_header *hdr = (struct entry_header *) buf;
 	struct exit_task_aux *aux = (struct exit_task_aux *) &buf[hdr_size];
+
+	if (!should_record(CBID_EXIT_TASK))
+		return;
 
 	set_header(hdr, CBID_EXIT_TASK, start, end);
 	set_thread_info(&aux->th_info, p);
@@ -169,6 +206,9 @@ static void record_enable(u64 start, u64 end, struct task_struct *p)
 	struct entry_header *hdr = (struct entry_header *) buf;
 	struct enable_aux *aux = (struct enable_aux *) &buf[hdr_size];
 
+	if (!should_record(CBID_ENABLE))
+		return;
+
 	set_header(hdr, CBID_ENABLE, start, end);
 	set_thread_info(&aux->th_info, p);
 
@@ -183,6 +223,9 @@ static void record_disable(u64 start, u64 end, struct task_struct *p)
 	__attribute__((aligned(8))) u8 buf[buf_size];
 	struct entry_header *hdr = (struct entry_header *) buf;
 	struct disable_aux *aux = (struct disable_aux *) &buf[hdr_size];
+
+	if (!should_record(CBID_DISABLE))
+		return;
 
 	set_header(hdr, CBID_DISABLE, start, end);
 	set_thread_info(&aux->th_info, p);
@@ -199,6 +242,9 @@ static void record_set_cpumask(u64 start, u64 end, struct task_struct *p, const 
 	struct entry_header *hdr = (struct entry_header *) buf;
 	struct set_cpumask_aux *aux = (struct set_cpumask_aux *) &buf[hdr_size];
 
+	if (!should_record(CBID_SET_CPUMASK))
+		return;
+
 	set_header(hdr, CBID_SET_CPUMASK, start, end);
 	set_thread_info(&aux->th_info, p);
 	aux->cpumask = cpumask->bits[0]; /* set only first 64-bit */
@@ -214,6 +260,9 @@ static void record_set_weight(u64 start, u64 end, struct task_struct *p, u32 wei
 	__attribute__((aligned(8))) u8 buf[buf_size];
 	struct entry_header *hdr = (struct entry_header *) buf;
 	struct set_weight_aux *aux = (struct set_weight_aux *) &buf[hdr_size];
+
+	if (!should_record(CBID_SET_WEIGHT))
+		return;
 
 	set_header(hdr, CBID_SET_WEIGHT, start, end);
 	set_thread_info(&aux->th_info, p);
@@ -232,6 +281,9 @@ static void record_normal(s32 cbid, u64 start, u64 end)
 
 	u8 buf[buf_size];
 	struct entry_header *hdr = (struct entry_header *) buf;
+
+	if (!should_record(cbid))
+		return;
 
 	set_header(hdr, cbid, start, end);
 

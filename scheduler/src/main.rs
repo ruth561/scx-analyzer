@@ -28,7 +28,44 @@ use std::sync::Arc;
 
 unsafe impl Plain for entry_header {}
 
+use clap::Parser;
+
+#[derive(Debug, Parser)]
+struct Cli {
+    /// Specify the CPUs where ops events should be recorded.
+    /// Accepted formats:
+    ///   - Single CPUs:  0,1
+    ///   - Ranges:       4-7
+    ///   - Mixed:        3,6-8
+    #[clap(short, long, verbatim_doc_comment)]
+    record_cpus: String,
+}
+
+/*
+ * Parses a CPU list string specified via command-line arguments
+ * and converts it into a cpumask representing the CPUs.
+ */
+fn parse_cpus_str(cpu_str_arg: &str) -> u64
+{
+    let mut cpumask = 0u64;
+    for cpu_str in cpu_str_arg.split(",") {
+        if let Some(i) = cpu_str.find("-") {
+            let low = i32::from_str_radix(&cpu_str[0..i], 10).unwrap();
+            let high = i32::from_str_radix(&cpu_str[(i+1)..], 10).unwrap();
+            for cpu in low..=high {
+                cpumask |= 1u64 << cpu;
+            }
+        } else {
+            let cpu = i32::from_str_radix(cpu_str, 10).unwrap();
+            cpumask |= 1u64 << cpu;
+        }
+    }
+    cpumask
+}
+
 fn main() {
+    let cli = Cli::parse();
+
     let shutdown = Arc::new(AtomicBool::new(false));
     let shutdown_clone = shutdown.clone();
     ctrlc::set_handler(move || {
@@ -38,6 +75,14 @@ fn main() {
     let skel_builder = BpfSkelBuilder::default();
     let mut open_object = MaybeUninit::uninit();
     let mut skel = scx_ops_open!(skel_builder, &mut open_object, scheduler_ops).unwrap();
+
+    /*
+     * Setting cpumask
+     */
+    let record_cpumask = parse_cpus_str(&cli.record_cpus);
+    println!("[*] record_cpumask: 0x{:016x}", record_cpumask);
+    skel.maps.bss_data.record_cpumask.cpumask.bits[0] = record_cpumask;
+
     let mut skel: BpfSkel = scx_ops_load!(skel, scheduler_ops, uei).unwrap();
     let link: Link = scx_ops_attach!(skel, scheduler_ops).unwrap();
     
