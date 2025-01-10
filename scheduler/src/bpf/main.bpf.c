@@ -279,6 +279,27 @@ static void record_set_weight(u64 start, u64 end, struct task_struct *p, u32 wei
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
 }
 
+static void record_task_deadline(struct task_struct *p, u64 wake_up_time, u64 relative_deadline, u64 deadline)
+{
+	const static u64 hdr_size = sizeof(struct entry_header);
+	const static u64 buf_size = hdr_size + sizeof(struct task_deadline_aux);
+
+	u8 buf[buf_size];
+	struct entry_header *hdr = (struct entry_header *) buf;
+	struct task_deadline_aux *aux = (struct task_deadline_aux *) &buf[hdr_size];
+
+	if (!should_record(TASK_DEADLINE))
+		return;
+
+	set_header(hdr, TASK_DEADLINE, deadline, deadline + 100); /* 100ns is dummy */
+	set_thread_info(&aux->th_info, p);
+	aux->wake_up_time = wake_up_time;
+	aux->relative_deadline = relative_deadline;
+	aux->deadline = deadline;
+
+	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
+}
+
 /*
  * Without auxiliary information.
  */
@@ -591,6 +612,9 @@ SCX_OPS_DEFINE(scheduler_ops,
 
 	.set_cpumask	= (void *) scheduler_set_cpumask,
 	.set_weight	= (void *) scheduler_set_weight,
+
+	.timeout_ms	= 5000,
+	.flags		= SCX_OPS_ENQ_LAST,
 
 	.name		= "scheduler");
 

@@ -35,6 +35,8 @@ enum stat_idx {
 	NR_CBID,
 
 	TP_SCHED_SWITCH = 0x1000,
+
+	TASK_DEADLINE = 0x2000,
 };
 
 static inline const char *get_string_from_cbid(int cbid)
@@ -72,6 +74,8 @@ static inline const char *get_string_from_cbid(int cbid)
 		return "set_weight";
 	case TP_SCHED_SWITCH:
 		return "sched_switch";
+	case TASK_DEADLINE:
+		return "task deadline";
 	default:
 		return "UNKNOWN";
 	}
@@ -161,6 +165,13 @@ struct set_weight_aux {
 struct tp_sched_switch_aux {
 	struct th_info prev;
 	struct th_info next;
+};
+
+struct task_deadline_aux {
+	struct th_info th_info;
+	u64 wake_up_time;
+	u64 relative_deadline;
+	u64 deadline;
 };
 
 const u64 ENTRY_SIZE = sizeof(struct entry_header);

@@ -74,6 +74,9 @@ int ring_buffer_handler(void *ctx, void *data, size_t size)
 	case TP_SCHED_SWITCH:
 		trace_sched_switch(hdr, (struct tp_sched_switch_aux *) aux);
 		break;
+	case TASK_DEADLINE:
+		trace_task_deadline(hdr, (struct task_deadline_aux *) aux);
+		break;
 	case CBID_DISPATCH:
 		/* fallthrough */
 	default:

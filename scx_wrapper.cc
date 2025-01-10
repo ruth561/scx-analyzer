@@ -478,3 +478,18 @@ void trace_sched_switch(struct entry_header *hdr, struct tp_sched_switch_aux *au
 		    "next", get_thread_name(&aux->next));
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
+
+// MARK: task event
+void trace_task_deadline(struct entry_header *hdr, struct task_deadline_aux *aux)
+{
+	auto track = get_scx_track(hdr->cpu);
+
+	TRACE_EVENT_INSTANT("scx", "task deadline",
+			track,
+			(uint64_t) hdr->start,
+			"CPU", hdr->cpu,
+			"thread", get_thread_name(&aux->th_info),
+			"wake up time [ns]", aux->wake_up_time,
+			"relative deadline [ns]", aux->relative_deadline,
+			"deadline [ns]", aux->deadline);
+}

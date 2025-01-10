@@ -24,3 +24,5 @@ void trace_set_weight(struct entry_header *hdr, struct set_weight_aux *aux);
 void trace_normal(struct entry_header *hdr, void *_aux);
 
 void trace_sched_switch(struct entry_header *hdr, struct tp_sched_switch_aux *aux);
+
+void trace_task_deadline(struct entry_header *hdr, struct task_deadline_aux *aux);
