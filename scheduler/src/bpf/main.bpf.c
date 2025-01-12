@@ -279,6 +279,24 @@ static void record_set_weight(u64 start, u64 end, struct task_struct *p, u32 wei
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
 }
 
+static void record_tick(u64 start, u64 end, struct task_struct *p)
+{
+	const static u64 hdr_size = sizeof(struct entry_header);
+	const static u64 buf_size = hdr_size + sizeof(struct tick_aux);
+
+	__attribute__((aligned(8))) u8 buf[buf_size];
+	struct entry_header *hdr = (struct entry_header *) buf;
+	struct tick_aux *aux = (struct tick_aux *) &buf[hdr_size];
+
+	if (!should_record(CBID_TICK))
+		return;
+
+	set_header(hdr, CBID_TICK, start, end);
+	set_thread_info(&aux->th_info, p);
+
+	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
+}
+
 static void record_task_deadline(struct task_struct *p, u64 wake_up_time, u64 relative_deadline, u64 deadline)
 {
 	const static u64 hdr_size = sizeof(struct entry_header);
@@ -592,6 +610,22 @@ void BPF_STRUCT_OPS(scheduler_set_weight, struct task_struct *p, u32 weight)
 	record_set_weight(start, end, p, weight);
 }
 
+void BPF_STRUCT_OPS(scheduler_tick, struct task_struct *p)
+{
+	u64 start, end;
+
+	start = bpf_ktime_get_boot_ns();
+
+	// ================= implementation ===================== //
+
+	ops_tick(p);
+
+	// ====================================================== //
+
+	end = bpf_ktime_get_boot_ns();
+	record_tick(start, end, p);
+}
+
 SCX_OPS_DEFINE(scheduler_ops,
 	.init		= (void *) scheduler_init,
 	.exit		= (void *) scheduler_exit,
@@ -613,8 +647,10 @@ SCX_OPS_DEFINE(scheduler_ops,
 	.set_cpumask	= (void *) scheduler_set_cpumask,
 	.set_weight	= (void *) scheduler_set_weight,
 
+	.tick		= (void *) scheduler_tick,
+
 	.timeout_ms	= 5000,
-	.flags		= SCX_OPS_ENQ_LAST,
+	// .flags		= SCX_OPS_ENQ_LAST,
 
 	.name		= "scheduler");
 

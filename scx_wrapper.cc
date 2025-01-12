@@ -453,6 +453,18 @@ void trace_set_weight(struct entry_header *hdr, struct set_weight_aux *aux)
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
 
+void trace_tick(struct entry_header *hdr, struct tick_aux *aux)
+{
+	auto track = get_scx_track(hdr->cpu);
+
+	TRACE_EVENT("scx", "tick",
+		    track,
+		    (uint64_t) hdr->start,
+		    "CPU", hdr->cpu,
+		    "thread", get_thread_name(&aux->th_info));
+	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
+}
+
 void trace_normal(struct entry_header *hdr, void *_aux)
 {
 	auto track = get_scx_track(hdr->cpu);

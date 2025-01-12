@@ -18,6 +18,7 @@ use scx_utils::scx_ops_attach;
 use scx_utils::scx_ops_load;
 use scx_utils::scx_ops_open;
 use scx_utils::uei_exited;
+use scx_utils::uei_report;
 
 use plain::Plain;
 
@@ -91,6 +92,9 @@ fn main() {
     while !shutdown.load(Ordering::Relaxed) && !uei_exited!(&skel, uei) {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
+
+    println!("[*] UEI report");
+    uei_report!(&skel, uei).unwrap();
 
     println!("[*] BPF scheduler exiting..\n");
 

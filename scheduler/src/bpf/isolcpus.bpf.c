@@ -229,20 +229,64 @@ static s32 find_preemptible_cpu(struct task_struct *p, struct task_ctx *taskc)
 	 	return -1;
 }
 
-static bool should_preempt(s32 cpu, struct task_struct *prev) {
-	struct cpu_ctx *cpuc;
-	struct bpf_iter_scx_dsq *it;
+static inline bool should_preempt(struct task_struct *current) {
+	s32 err;
+	bool ret = false;
+	struct task_struct *p;
+        struct task_ctx *pc, *currentc;
+	struct bpf_iter_scx_dsq it;
 
-	cpuc = get_cpu_ctx_id(cpu);
-	if (!cpuc) {
-		scx_bpf_error("should_preempt: Failed to find cpu context");
-		return -1;
+	if (!current)
+		return false;
+
+	/*
+	 * Retrieve the task context of current.
+	 */
+	currentc = bpf_task_storage_get(&task_ctx, current, 0, 0);
+	if (!currentc) {
+		scx_bpf_error("should_preempt: Failed to get current task local storage. current=%s[%d]",
+			current->comm, current->pid);
+		return false;
 	}
 
 	/*
-	 * TODO：EDF_DSQの先頭のタスクのdeadlineとcpuc->curr_deadlineを比べて判断する
+	* Retrieve the task context of the task at the front of the EDF_DSQ.
+	*/
+	bpf_rcu_read_lock();
+	err = bpf_iter_scx_dsq_new(&it, EDF_DSQ, 0);
+	if (err) {
+		scx_bpf_error("should_preempt: Failed to init a DSQ iterator.");
+		goto out;
+	}
+
+	p = bpf_iter_scx_dsq_next(&it);
+	if (!p) {
+		/*
+		 * Preemption should not be performed if there is no task in SHARED_DSQ.
+		 */
+		goto out;
+	}
+
+        pc = bpf_task_storage_get(&task_ctx, p, 0, 0);
+	if (!pc) {
+		scx_bpf_error("should_preempt: Failed to get task local storage");
+		goto out;
+	}
+	
+	/*
+	 * Preemption should be performed if the deadline of a runnable task is closer
+	 * than that of the current task. 
 	 */
-	bpf_iter_scx_dsq_new(it, EDF_DSQ, 0);
+	if (pc->edf.deadline < currentc->edf.deadline) {
+		ret = true;
+	} else {
+		ret = false;
+	}
+
+out:
+	bpf_iter_scx_dsq_destroy(&it);
+	bpf_rcu_read_unlock();
+	return ret;
 }
 
 // MARK: urb
@@ -594,7 +638,10 @@ static void ops_dispatch(s32 cpu, struct task_struct *prev)
         consume_user_ringbuf();
         
         if (bpf_cpumask_test_cpu(cpu, &isolated_cpumask.cpumask)) {
-		if (should_preempt(cpu, prev))
+		/*
+		 * If prev is swapper thread, then do consume.
+		 */
+		if (!prev || prev->pid == 0 || should_preempt(prev))
 	                scx_bpf_consume(EDF_DSQ);
         } else {
                 scx_bpf_consume(SHARED_DSQ);
@@ -631,4 +678,14 @@ static void ops_set_weight(struct task_struct *p, u32 weight)
 		return;
 	}
         taskc->isolated = task_is_isolated(p);
+}
+
+__attribute__((unused))
+static void ops_tick(struct task_struct *p)
+{
+	if (!p)
+		return;
+
+        if (should_preempt(p))
+		p->scx.slice = 0;
 }
