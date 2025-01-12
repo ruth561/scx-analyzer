@@ -242,6 +242,66 @@ static std::string get_scx_enq_flags_str(u64 enq_flags)
 }
 
 /*
+ * Converts deq_flags to std::string.
+ */
+static std::string get_scx_deq_flags_str(u64 deq_flags)
+{
+	std::string ret = std::to_string(deq_flags);
+	ret += " ";
+
+	if (deq_flags == 0) {
+		ret += "(NONE)";
+		return ret;
+	}
+
+	ret += "(";
+
+	if (deq_flags & DEQUEUE_SLEEP) {
+		deq_flags &= ~DEQUEUE_SLEEP;
+		push_flag_str(ret, "DEQUEUE_SLEEP", deq_flags == 0);
+	}
+
+	if (deq_flags & DEQUEUE_SAVE) {
+		deq_flags &= ~DEQUEUE_SAVE;
+		push_flag_str(ret, "DEQUEUE_SAVE", deq_flags == 0);
+	}
+
+	if (deq_flags & DEQUEUE_MOVE) {
+		deq_flags &= ~DEQUEUE_MOVE;
+		push_flag_str(ret, "DEQUEUE_MOVE", deq_flags == 0);
+	}
+
+	if (deq_flags & DEQUEUE_NOCLOCK) {
+		deq_flags &= ~DEQUEUE_NOCLOCK;
+		push_flag_str(ret, "DEQUEUE_NOCLOCK", deq_flags == 0);
+	}
+
+	if (deq_flags & DEQUEUE_SPECIAL) {
+		deq_flags &= ~DEQUEUE_SPECIAL;
+		push_flag_str(ret, "DEQUEUE_SPECIAL", deq_flags == 0);
+	}
+
+	if (deq_flags & DEQUEUE_MIGRATING) {
+		deq_flags &= ~DEQUEUE_MIGRATING;
+		push_flag_str(ret, "DEQUEUE_MIGRATING", deq_flags == 0);
+	}
+
+	if (deq_flags & DEQUEUE_DELAYED) {
+		deq_flags &= ~DEQUEUE_DELAYED;
+		push_flag_str(ret, "DEQUEUE_DELAYED", deq_flags == 0);
+	}
+
+	if (deq_flags) {
+		char flag_str[0x20];
+		snprintf(flag_str, 0x20, "UNKNOWN=%llx", deq_flags);
+		push_flag_str(ret, flag_str, true);
+	}
+
+	ret += ")";
+	return ret;
+}
+
+/*
  * Converts wake_flags to std::string.
  */
 static std::string get_scx_wake_flags_str(u64 wake_flags)
@@ -371,7 +431,7 @@ void trace_quiescent(struct entry_header *hdr, struct quiescent_aux *aux)
 		    (uint64_t) hdr->start,
 		    "CPU", hdr->cpu,
 		    "thread", get_thread_name(&aux->th_info),
-		    "deq_flags", aux->deq_flags);
+		    "deq_flags", get_scx_deq_flags_str(aux->deq_flags));
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
 
