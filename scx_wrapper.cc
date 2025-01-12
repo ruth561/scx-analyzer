@@ -256,39 +256,14 @@ static std::string get_scx_deq_flags_str(u64 deq_flags)
 
 	ret += "(";
 
-	if (deq_flags & DEQUEUE_SLEEP) {
-		deq_flags &= ~DEQUEUE_SLEEP;
-		push_flag_str(ret, "DEQUEUE_SLEEP", deq_flags == 0);
+	if (deq_flags & SCX_DEQ_SLEEP) {
+		deq_flags &= ~SCX_DEQ_SLEEP;
+		push_flag_str(ret, "SCX_DEQ_SLEEP", deq_flags == 0);
 	}
 
-	if (deq_flags & DEQUEUE_SAVE) {
-		deq_flags &= ~DEQUEUE_SAVE;
-		push_flag_str(ret, "DEQUEUE_SAVE", deq_flags == 0);
-	}
-
-	if (deq_flags & DEQUEUE_MOVE) {
-		deq_flags &= ~DEQUEUE_MOVE;
-		push_flag_str(ret, "DEQUEUE_MOVE", deq_flags == 0);
-	}
-
-	if (deq_flags & DEQUEUE_NOCLOCK) {
-		deq_flags &= ~DEQUEUE_NOCLOCK;
-		push_flag_str(ret, "DEQUEUE_NOCLOCK", deq_flags == 0);
-	}
-
-	if (deq_flags & DEQUEUE_SPECIAL) {
-		deq_flags &= ~DEQUEUE_SPECIAL;
-		push_flag_str(ret, "DEQUEUE_SPECIAL", deq_flags == 0);
-	}
-
-	if (deq_flags & DEQUEUE_MIGRATING) {
-		deq_flags &= ~DEQUEUE_MIGRATING;
-		push_flag_str(ret, "DEQUEUE_MIGRATING", deq_flags == 0);
-	}
-
-	if (deq_flags & DEQUEUE_DELAYED) {
-		deq_flags &= ~DEQUEUE_DELAYED;
-		push_flag_str(ret, "DEQUEUE_DELAYED", deq_flags == 0);
+	if (deq_flags & SCX_DEQ_CORE_SCHED_EXEC) {
+		deq_flags &= ~SCX_DEQ_CORE_SCHED_EXEC;
+		push_flag_str(ret, "SCX_DEQ_CORE_SCHED_EXEC", deq_flags == 0);
 	}
 
 	if (deq_flags) {

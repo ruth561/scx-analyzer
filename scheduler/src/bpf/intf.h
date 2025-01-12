@@ -183,15 +183,4 @@ struct task_deadline_aux {
 
 const u64 ENTRY_SIZE = sizeof(struct entry_header);
 
-/*
- * Flags passed to ops.quiescent and ops.dequeue
- */
-#define DEQUEUE_SLEEP		0x01
-#define DEQUEUE_SAVE		0x02
-#define DEQUEUE_MOVE		0x04
-#define DEQUEUE_NOCLOCK		0x08
-#define DEQUEUE_SPECIAL		0x10
-#define DEQUEUE_MIGRATING	0x100
-#define DEQUEUE_DELAYED		0x200
-
 #endif /* __INTF_H */

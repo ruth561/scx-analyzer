@@ -600,7 +600,7 @@ static void ops_quiescent(struct task_struct *p, u64 deq_flags)
 		}
 	}
 
-	if (deq_flags & DEQUEUE_SLEEP) {
+	if (deq_flags & SCX_DEQ_SLEEP) {
 		change_task_state(taskc, TASK_STATE_QUIESCENT);
 	} else {
 		change_task_state(taskc, TASK_STATE_MIGRATING);
