@@ -20,6 +20,16 @@ s32 nr_cpus;
 struct bpf_cpumask isolated_cpumask;
 struct bpf_cpumask housekeeping_cpumask;
 
+// MARK: task_ctx
+enum task_state {
+	TASK_STATE_RUNNABLE,
+	TASK_STATE_QUIESCENT,
+	TASK_STATE_RUNNING,
+	TASK_STATE_STOPPING,
+
+	TASK_STATE_MIGRATING,
+};
+
 struct task_stats {
 	u64 count;
 	u64 sum_exectime;
@@ -42,6 +52,7 @@ struct edf_entity {
 
 struct task_ctx {
 	struct bpf_cpumask __kptr *tmp_cpumask;
+	int state;
         bool isolated;
 	bool stats_on;
         struct edf_entity edf;
@@ -115,6 +126,16 @@ static void set_edf_entity(struct task_struct *p, struct task_ctx* taskc)
 	} else {
 		taskc->edf.deadline = U64_MAX;
 	}
+}
+
+static void init_task_state(struct task_ctx* taskc)
+{
+	taskc->state = TASK_STATE_QUIESCENT;
+}
+
+static void change_task_state(struct task_ctx* taskc, int new_state)
+{
+	taskc->state = new_state;
 }
 
 static void init_edf_entity(struct task_struct *p, struct task_ctx* taskc)
@@ -247,6 +268,13 @@ static inline bool should_preempt(struct task_struct *current) {
 		scx_bpf_error("should_preempt: Failed to get current task local storage. current=%s[%d]",
 			current->comm, current->pid);
 		return false;
+	}
+
+	/*
+	 * If the current task is to go to sleep, then return true.
+	 */
+	if (currentc->state == TASK_STATE_QUIESCENT) {
+		return true;
 	}
 
 	/*
@@ -446,6 +474,8 @@ static s32 ops_init_task(struct task_struct *p, struct scx_init_task_args *args)
 
         taskc->isolated = task_is_isolated(p);
 
+	init_task_state(taskc);
+
 	init_edf_entity(p, taskc);
 
 	init_task_stats(p, taskc);
@@ -505,20 +535,40 @@ static void ops_runnable(struct task_struct *p, u64 enq_flags)
 	 * Records information at wakeup.
 	 */
 	set_edf_entity(p, taskc);
+
+	change_task_state(taskc, TASK_STATE_RUNNABLE);
 }
 
 __attribute__((unused))
 static void ops_running(struct task_struct *p)
 {
+	struct task_ctx *taskc;
         s32 cpu = bpf_get_smp_processor_id();
+
+	taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
+	if (!taskc) {
+		scx_bpf_error("[!] ops_running: Failed to get task local storage");
+		return;
+	}
 
         if (bpf_cpumask_test_cpu(cpu, &isolated_cpumask.cpumask))
                 update_cpu_ctx(p);
+
+	change_task_state(taskc, TASK_STATE_RUNNING);
 }
 
 __attribute__((unused))
 void ops_stopping(struct task_struct *p, bool runnable)
 {
+	struct task_ctx *taskc;
+	
+	taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
+	if (!taskc) {
+		scx_bpf_error("[!] ops_stopping: Failed to get task local storage");
+		return;
+	}
+
+	change_task_state(taskc, TASK_STATE_STOPPING);
 }
 
 __attribute__((unused))
@@ -548,6 +598,12 @@ static void ops_quiescent(struct task_struct *p, u64 deq_flags)
 			bpf_printk("[!] DEADLINE VIOLATION! deadline=%lld, now=%lld",
 				taskc->edf.deadline, now);
 		}
+	}
+
+	if (deq_flags & DEQUEUE_SLEEP) {
+		change_task_state(taskc, TASK_STATE_QUIESCENT);
+	} else {
+		change_task_state(taskc, TASK_STATE_MIGRATING);
 	}
 }
 
