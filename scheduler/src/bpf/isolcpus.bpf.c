@@ -13,11 +13,53 @@
 #define SHARED_DSQ 0
 #define EDF_DSQ 1
 
+/*
+ * @nr_task_edf_dsq - The number of tasks in EDF_DSQ.
+ *
+ * This counter accounts for the following cases:
+ *
+ *	- Tasks queued in EDF_DSQ.
+ *
+ *	- Tasks that have been dispatched (by scx_bpf_dispatch) but are not yet
+ *	  queued in EDF_DSQ due to delayed dispatch processing.
+ *
+ *	- Tasks that have been moved to the local DSQ (by scx_bpf_consume), but
+ *	  this counter has not been decremented yet.
+ *
+ * Therefore, this counter may be an overestimated value compared to the
+ * actual number of tasks in EDF_DSQ.
+ *
+ * This variable prevents CPUs from going idle while there are runnable tasks,
+ * so such overestimation is not a problem.
+ */
+u32 nr_task_edf_dsq = 0;
+/*
+ * @nr_isolated_cpus - The number of isolated CPUs.
+ *
+ * This variable is initialized in ops_init and remains immutable afterward.
+ */
+u32 nr_isolated_cpus;
+/*
+ * @nr_isolated_idle_cpus - The number of idle CPUs among the isolated CPUs..
+ *
+ * This variable is incremented and decremented in ops.update_idle.
+ * It is used alongside the variable nr_task_edf_dsq. 
+ * Dispatch processing and transitioning to idle can occur concurrently.
+ *
+ * If the task dispatching to the EDF_DSQ on one CPU and the transition to
+ * the idle state on another CPU occur concurrently, there is a possibility
+ * that a task remains in the EDF_DSQ while the CPU becomes idle.
+ * Therefore, this variable is used to notify the dispatch side when a CPU
+ * transitions to the idle state.
+ */
+u32 nr_isolated_idle_cpus;
+
 UEI_DEFINE(uei);
 
 #define MAX_NR_CPUS 512
 s32 nr_cpus;
 struct bpf_cpumask isolated_cpumask;
+struct bpf_cpumask isolated_idle_cpumask;
 struct bpf_cpumask housekeeping_cpumask;
 
 // MARK: task_ctx
@@ -233,6 +275,13 @@ static s32 find_preemptible_cpu(struct task_struct *p, struct task_ctx *taskc)
 	bpf_for(cpu, 0, nr_cpus) {
 		if (!bpf_cpumask_test_cpu(cpu, &isolated_cpumask.cpumask))
 			continue;
+
+		/*
+		 * If the CPU is about to become idle, then return it.
+		 */
+		if (bpf_cpumask_test_cpu(cpu, &isolated_idle_cpumask.cpumask))
+			return cpu;
+		
 		cpuc = get_cpu_ctx_id(cpu);
 		if (!cpuc) {
 			scx_bpf_error("find_preemptible_cpu: Failed to find cpu context");
@@ -426,6 +475,19 @@ static s32 ops_init()
 
         bpf_printk("[*] isolated_cpumask: %lx", isolated_cpumask.cpumask.bits[0]);
         bpf_printk("[*] housekeeping_cpumask: %lx", housekeeping_cpumask.cpumask.bits[0]);
+
+	/*
+	 * Sets all isolated CPUs to the idle state.
+	 */
+	nr_isolated_cpus = bpf_cpumask_weight(&isolated_cpumask.cpumask);
+	nr_isolated_idle_cpus = nr_isolated_cpus;
+	bpf_cpumask_clear(&isolated_idle_cpumask);
+	bpf_cpumask_copy(&isolated_idle_cpumask, &isolated_cpumask.cpumask);
+
+	bpf_printk("[*] nr_isolated_cpus = %d", nr_isolated_cpus);
+	bpf_printk("[*] isolated_cpumask = %016llx", isolated_cpumask.cpumask.bits[0]);
+	bpf_printk("[*] nr_isolated_idle_cpus = %d", nr_isolated_idle_cpus);
+	bpf_printk("[*] isolated_idle_cpumask = %016llx", isolated_idle_cpumask.cpumask.bits[0]);
 
         /*
          * Creates a shared DSQ.
@@ -675,6 +737,17 @@ static void ops_enqueue(struct task_struct *p, u64 enq_flags)
                         return;
                 }
 
+		/*
+		 * The execution order is important. During the dispatching phase,
+		 * nr_task_edf_dsq is incremented first, and then nr_isolated_idle_cpus is checked
+		 * (in find_preemptible_cpu).
+		 *
+		 * See also ops_update_idle.
+		 */
+		__sync_fetch_and_add(&nr_task_edf_dsq, 1);
+
+		barrier();
+
                 scx_bpf_dispatch_vtime(p, EDF_DSQ, SCX_SLICE_INF, taskc->edf.deadline, enq_flags);
                 /*
                  * If there is an CPU where a lower priority task is running, then kick it.
@@ -691,14 +764,20 @@ static void ops_enqueue(struct task_struct *p, u64 enq_flags)
 __attribute__((unused))
 static void ops_dispatch(s32 cpu, struct task_struct *prev)
 {
+	bool consumed;
+
         consume_user_ringbuf();
         
         if (bpf_cpumask_test_cpu(cpu, &isolated_cpumask.cpumask)) {
 		/*
 		 * If prev is swapper thread, then do consume.
 		 */
-		if (!prev || prev->pid == 0 || should_preempt(prev))
-	                scx_bpf_consume(EDF_DSQ);
+		if (!prev || prev->pid == 0 || should_preempt(prev)) {
+			consumed = scx_bpf_consume(EDF_DSQ);
+			if (consumed) {
+				__sync_fetch_and_sub(&nr_task_edf_dsq, 1); 
+			}
+		}
         } else {
                 scx_bpf_consume(SHARED_DSQ);
         }
@@ -750,4 +829,54 @@ static void ops_tick(struct task_struct *p)
 __attribute__((unused))
 static void ops_update_idle(s32 cpu, bool idle)
 {
+	if (!bpf_cpumask_test_cpu(cpu, &isolated_cpumask.cpumask)) {
+		return;
+	}
+
+	/*
+	 * The execution order is important.
+	 *
+	 *	ops.update_idle		|	ops.enqueue
+	 * -----------------------------+-----------------------------
+	 *				|
+	 *   Updates the CPU state	|  Increments nr_task_edf_dsq (A)
+	 *				|
+	 *	  barrier()		|	barrier()
+	 *				|
+	 *   Checks nr_task_edf_dsq	|  Checks the CPU state and kicks
+	 *				|    an idle CPU if one exists.
+	 *				|
+	 *
+	 * If nr_tasks_edf_dsq == 0, there are no runnable tasks in EDF_DSQ.
+	 * For a task that is about to be dispatched to EDF_DSQ, nr_task_edf_dsq
+	 * is still zero because (A) has not been executed yet. In this dispatch path,
+	 * the CPU state is checked, and an idle CPU can be identified.
+	 *
+	 * See also ops_enqueue.
+	 */
+	if (idle) {
+		__sync_fetch_and_add(&nr_isolated_idle_cpus, 1);
+		bpf_cpumask_set_cpu(cpu, &isolated_idle_cpumask);
+	} else {
+		__sync_fetch_and_sub(&nr_isolated_idle_cpus, 1);
+		bpf_cpumask_clear_cpu(cpu, &isolated_idle_cpumask);
+	}
+
+	if (nr_isolated_idle_cpus > nr_isolated_cpus) {
+		scx_bpf_error("nr_isolated_idle_cpus (=%d) > nr_isolated_cpus (=%d)",
+			nr_isolated_idle_cpus, nr_isolated_cpus);
+		return;
+	}
+
+	barrier();
+
+	if (idle) {
+		/*
+		 * If there might be a task in EDF_DSQ, immediately kick itself and invoke
+		 * the scheduler.
+		 */
+		if (nr_task_edf_dsq > 0) {
+			scx_bpf_kick_cpu(cpu, 0);
+		}
+	}
 }
