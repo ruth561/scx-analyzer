@@ -21,6 +21,7 @@ void trace_disable(struct entry_header *hdr, struct disable_aux *aux);
 void trace_set_cpumask(struct entry_header *hdr, struct set_cpumask_aux *aux);
 void trace_set_weight(struct entry_header *hdr, struct set_weight_aux *aux);
 void trace_tick(struct entry_header *hdr, struct tick_aux *aux);
+void trace_update_idle(struct entry_header *hdr, struct update_idle_aux *aux);
 
 void trace_normal(struct entry_header *hdr, void *_aux);
 

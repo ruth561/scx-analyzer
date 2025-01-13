@@ -297,6 +297,25 @@ static void record_tick(u64 start, u64 end, struct task_struct *p)
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
 }
 
+static void record_update_idle(u64 start, u64 end, s32 cpu, bool idle)
+{
+	const static u64 hdr_size = sizeof(struct entry_header);
+	const static u64 buf_size = hdr_size + sizeof(struct update_idle_aux);
+
+	__attribute__((aligned(8))) u8 buf[buf_size];
+	struct entry_header *hdr = (struct entry_header *) buf;
+	struct update_idle_aux *aux = (struct update_idle_aux *) &buf[hdr_size];
+
+	if (!should_record(CBID_UPDATE_IDLE))
+		return;
+
+	set_header(hdr, CBID_UPDATE_IDLE, start, end);
+	aux->cpu = cpu;
+	aux->idle = idle;
+
+	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
+}
+
 static void record_task_deadline(struct task_struct *p, u64 wake_up_time, u64 relative_deadline, u64 deadline)
 {
 	const static u64 hdr_size = sizeof(struct entry_header);
@@ -626,6 +645,22 @@ void BPF_STRUCT_OPS(scheduler_tick, struct task_struct *p)
 	record_tick(start, end, p);
 }
 
+void BPF_STRUCT_OPS(scheduler_update_idle, s32 cpu, bool idle)
+{
+	u64 start, end;
+
+	start = bpf_ktime_get_boot_ns();
+
+	// ================= implementation ===================== //
+
+	ops_update_idle(cpu, idle);
+
+	// ====================================================== //
+
+	end = bpf_ktime_get_boot_ns();
+	record_update_idle(start, end, cpu, idle);
+}
+
 SCX_OPS_DEFINE(scheduler_ops,
 	.init		= (void *) scheduler_init,
 	.exit		= (void *) scheduler_exit,
@@ -648,8 +683,11 @@ SCX_OPS_DEFINE(scheduler_ops,
 	.set_weight	= (void *) scheduler_set_weight,
 
 	.tick		= (void *) scheduler_tick,
+	.update_idle	= (void *) scheduler_update_idle,
 
 	.timeout_ms	= 5000,
+
+	.flags		= SCX_OPS_KEEP_BUILTIN_IDLE,
 	// .flags		= SCX_OPS_ENQ_LAST,
 
 	.name		= "scheduler");

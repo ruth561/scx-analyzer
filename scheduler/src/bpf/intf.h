@@ -33,6 +33,7 @@ enum stat_idx {
 	CBID_SET_CPUMASK,
 	CBID_SET_WEIGHT,
 	CBID_TICK,
+	CBID_UPDATE_IDLE,
 	NR_CBID,
 
 	TP_SCHED_SWITCH = 0x1000,
@@ -75,6 +76,8 @@ static inline const char *get_string_from_cbid(int cbid)
 		return "set_weight";
 	case CBID_TICK:
 		return "tick";
+	case CBID_UPDATE_IDLE:
+		return "update_idle";
 	case TP_SCHED_SWITCH:
 		return "sched_switch";
 	case TASK_DEADLINE:
@@ -167,6 +170,11 @@ struct set_weight_aux {
 
 struct tick_aux {
 	struct th_info th_info;
+};
+
+struct update_idle_aux {
+	s32 cpu;
+	s32 idle; /* bool */
 };
 
 struct tp_sched_switch_aux {

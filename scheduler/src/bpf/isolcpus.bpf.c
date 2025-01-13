@@ -736,6 +736,7 @@ static void ops_set_weight(struct task_struct *p, u32 weight)
         taskc->isolated = task_is_isolated(p);
 }
 
+// MARK: tick/update_idle/..
 __attribute__((unused))
 static void ops_tick(struct task_struct *p)
 {
@@ -744,4 +745,9 @@ static void ops_tick(struct task_struct *p)
 
         if (should_preempt(p))
 		p->scx.slice = 0;
+}
+
+__attribute__((unused))
+static void ops_update_idle(s32 cpu, bool idle)
+{
 }

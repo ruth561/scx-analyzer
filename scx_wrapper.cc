@@ -500,6 +500,18 @@ void trace_tick(struct entry_header *hdr, struct tick_aux *aux)
 	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
 }
 
+void trace_update_idle(struct entry_header *hdr, struct update_idle_aux *aux)
+{
+	auto track = get_scx_track(hdr->cpu);
+
+	TRACE_EVENT("scx", "update_idle",
+		    track,
+		    (uint64_t) hdr->start,
+		    "CPU", hdr->cpu,
+		    "idle", aux->idle ? "true" : "false");
+	TRACE_EVENT_END("scx", track, (uint64_t) hdr->end);
+}
+
 void trace_normal(struct entry_header *hdr, void *_aux)
 {
 	auto track = get_scx_track(hdr->cpu);
