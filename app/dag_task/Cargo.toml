@@ -1,0 +1,11 @@
+[package]
+name = "dag_task"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+utils = { path = "../utils", version = "0.1" }
+spin = "0.9"
+libc = "0.2"
+lazy_static = "1.5"
+rand = "0.8"
