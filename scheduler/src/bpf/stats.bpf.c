@@ -80,15 +80,19 @@ void stats_at_update_idle(s32 cpu, bool idle)
 
 // MARK: task_stat
 enum task_state {
-	TASK_STAT_STATE_NONE,
-	TASK_STAT_STATE_RUNNABLE,
-	TASK_STAT_STATE_RUNNING,
-	TASK_STAT_STATE_STOPPING,
-	TASK_STAT_STATE_QUIESCENT,
+	TASK_STAT_STATE_runnable,
+	TASK_STAT_STATE_running,
+	TASK_STAT_STATE_stopping,
+	TASK_STAT_STATE_quiescent,
 };
 
 struct task_stat {
 	u32	state;
+	u64	timestamp;
+	u64	runnable_time;
+	u64	running_time;
+	u64	stopping_time;
+	u64	quiescent_time;
 };
 
 struct {
@@ -113,6 +117,14 @@ struct task_stat *get_task_stat(struct task_struct *p)
 		stat;						\
 	})
 
+#define update_stat_state(stat, prev_state, next_state, now)		\
+	do {								\
+		assert(stat->state == TASK_STAT_STATE_##prev_state);	\
+		stat->prev_state##_time += now - stat->timestamp;	\
+		stat->timestamp = now;					\
+		stat->state = TASK_STAT_STATE_##next_state;		\
+	} while (0)
+
 /*
  * This function is called before the stats of @p are taken.
  */
@@ -124,41 +136,54 @@ void stat_per_task_init(struct task_struct *p)
 	stat = bpf_task_storage_get(&task_stat, p, 0, BPF_LOCAL_STORAGE_GET_F_CREATE);
 	assert_ret(stat);
 
-	stat->state = TASK_STAT_STATE_QUIESCENT;
+	stat->state = TASK_STAT_STATE_quiescent;
+	stat->timestamp = bpf_ktime_get_boot_ns();
+	stat->runnable_time = 0;
+	stat->running_time = 0;
+	stat->stopping_time = 0;
+	stat->quiescent_time = 0;
 }
 
 __hidden
 void stat_at_runnable(struct task_struct *p, u64 enq_flags)
 {
+	u64 now = bpf_ktime_get_boot_ns();
 	struct task_stat *stat = get_task_stat_or_ret(p);
 
-	assert(stat->state == TASK_STAT_STATE_QUIESCENT);
-	stat->state = TASK_STAT_STATE_RUNNABLE;
+	update_stat_state(stat, quiescent, runnable, now);
 }
 
 __hidden
 void stat_at_running(struct task_struct *p)
 {
+	u64 now = bpf_ktime_get_boot_ns();
 	struct task_stat *stat = get_task_stat_or_ret(p);
 
-	assert(stat->state != TASK_STAT_STATE_QUIESCENT);
-	stat->state = TASK_STAT_STATE_RUNNING;
+	if (stat->state == TASK_STAT_STATE_runnable) {
+		update_stat_state(stat, runnable, running, now);
+	} else {
+		update_stat_state(stat, stopping, running, now);
+	}
 }
 
 __hidden
 void stat_at_stopping(struct task_struct *p, bool runnable)
 {
+	u64 now = bpf_ktime_get_boot_ns();
 	struct task_stat *stat = get_task_stat_or_ret(p);
 
-	assert(stat->state == TASK_STAT_STATE_RUNNING);
-	stat->state = TASK_STAT_STATE_STOPPING;
+	update_stat_state(stat, running, stopping, now);
 }
 
 __hidden
 void stat_at_quiescent(struct task_struct *p, u64 deq_flags)
 {
+	u64 now = bpf_ktime_get_boot_ns();
 	struct task_stat *stat = get_task_stat_or_ret(p);
 
-	assert(stat->state != TASK_STAT_STATE_RUNNING);
-	stat->state = TASK_STAT_STATE_QUIESCENT;
+	if (stat->state == TASK_STAT_STATE_runnable) {
+		update_stat_state(stat, runnable, quiescent, now);
+	} else {
+		update_stat_state(stat, stopping, quiescent, now);
+	}
 }
