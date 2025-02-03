@@ -9,6 +9,8 @@
 
 #include <bpf/bpf_helpers.h>
 
+#include "stats.bpf.h"
+
 
 #define U64_MAX 0xFFFFFFFFFFFFFFFF
 
@@ -471,6 +473,8 @@ s32 ops_init(void)
                 if (!bpf_cpumask_test_cpu(cpu, &isolated_cpumask.cpumask)) {
                         bpf_cpumask_set_cpu(cpu, &housekeeping_cpumask);
                 }
+
+		stat_per_cpu_init(cpu);
         }
 
         bpf_printk("[*] isolated_cpumask: %lx", isolated_cpumask.cpumask.bits[0]);
@@ -542,6 +546,8 @@ s32 ops_init_task(struct task_struct *p, struct scx_init_task_args *args)
 
 	init_task_stats(p, taskc);
 
+	stat_per_task_init(p);
+
         return 0;
 }
 
@@ -585,6 +591,8 @@ void ops_runnable(struct task_struct *p, u64 enq_flags)
 {
         struct task_ctx *taskc;
 
+	stat_at_runnable(p, enq_flags);
+
 	taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
 	if (!taskc) {
 		scx_bpf_error("[!] ops_runnable: Failed to get task local storage");
@@ -607,6 +615,8 @@ void ops_running(struct task_struct *p)
 	struct task_ctx *taskc;
         s32 cpu = bpf_get_smp_processor_id();
 
+	stat_at_running(p);
+
 	taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
 	if (!taskc) {
 		scx_bpf_error("[!] ops_running: Failed to get task local storage");
@@ -623,6 +633,8 @@ __hidden
 void ops_stopping(struct task_struct *p, bool runnable)
 {
 	struct task_ctx *taskc;
+
+	stat_at_stopping(p, runnable);
 	
 	taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
 	if (!taskc) {
@@ -638,6 +650,8 @@ void ops_quiescent(struct task_struct *p, u64 deq_flags)
 {
         u64 sum_exec_runtime_delta;
 	struct task_ctx *taskc;
+
+	stat_at_quiescent(p, deq_flags);
 
 	taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
 	if (!taskc) {
@@ -829,6 +843,8 @@ void ops_tick(struct task_struct *p)
 __hidden
 void ops_update_idle(s32 cpu, bool idle)
 {
+	stats_at_update_idle(cpu, idle);
+
 	if (!bpf_cpumask_test_cpu(cpu, &isolated_cpumask.cpumask)) {
 		return;
 	}
