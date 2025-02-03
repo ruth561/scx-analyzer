@@ -14,6 +14,8 @@ use libbpf_rs::Link;
 use anyhow::Context;
 use anyhow::Result;
 
+use scx_utils::import_enums;
+use scx_utils::scx_enums;
 use scx_utils::scx_ops_attach;
 use scx_utils::scx_ops_load;
 use scx_utils::scx_ops_open;
