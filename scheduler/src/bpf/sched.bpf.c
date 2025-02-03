@@ -5,8 +5,10 @@
 
 #include "intf.h"
 #include "vmlinux.h"
+#include "sched.bpf.h"
+
 #include <bpf/bpf_helpers.h>
-#include <scx/common.bpf.h>
+
 
 #define U64_MAX 0xFFFFFFFFFFFFFFFF
 
@@ -20,10 +22,10 @@
  *
  *	- Tasks queued in EDF_DSQ.
  *
- *	- Tasks that have been dispatched (by scx_bpf_dispatch) but are not yet
+ *	- Tasks that have been dispatched (by scx_bpf_dsq_insert) but are not yet
  *	  queued in EDF_DSQ due to delayed dispatch processing.
  *
- *	- Tasks that have been moved to the local DSQ (by scx_bpf_consume), but
+ *	- Tasks that have been moved to the local DSQ (by scx_bpf_dsq_move_to_local), but
  *	  this counter has not been decremented yet.
  *
  * Therefore, this counter may be an overestimated value compared to the
@@ -151,8 +153,6 @@ static bool task_is_isolated(struct task_struct *p)
         scx_bpf_error("[!] %s[%d] is neither housekeeped nor isolated", p->comm, p->pid);
         return false;
 }
-
-static void record_task_deadline(struct task_struct *p, u64 wake_up_time, u64 relative_deadline, u64 deadline);
 
 /*
  * Sets deadline and wake_up_time when @p wakes up.
@@ -449,8 +449,8 @@ void consume_user_ringbuf()
  * Callbacks for initialization and deinitialization
  */
 
-__attribute__((unused))
-static s32 ops_init()
+__hidden
+s32 ops_init(void)
 {
         s32 ret, cpu;
 
@@ -503,15 +503,15 @@ static s32 ops_init()
         return ret;
 }
 
-__attribute__((unused))
-static void ops_exit(struct scx_exit_info *ei)
+__hidden
+void ops_exit(struct scx_exit_info *ei)
 {
         UEI_RECORD(uei, ei);
         bpf_printk("[*] isolcpus scheduler exits");
 }
 
-__attribute__((unused))
-static s32 ops_init_task(struct task_struct *p, struct scx_init_task_args *args)
+__hidden
+s32 ops_init_task(struct task_struct *p, struct scx_init_task_args *args)
 {
 	struct task_ctx *taskc;
 	struct bpf_cpumask *cpumask;
@@ -545,8 +545,8 @@ static s32 ops_init_task(struct task_struct *p, struct scx_init_task_args *args)
         return 0;
 }
 
-__attribute__((unused))
-static void ops_exit_task(struct task_struct *p, struct scx_exit_task_args *args)
+__hidden
+void ops_exit_task(struct task_struct *p, struct scx_exit_task_args *args)
 {
 	struct task_ctx *taskc;
 
@@ -565,13 +565,13 @@ static void ops_exit_task(struct task_struct *p, struct scx_exit_task_args *args
 }
 
 // MARK: enable/disable
-__attribute__((unused))
-static void ops_enable(struct task_struct *p)
+__hidden
+void ops_enable(struct task_struct *p)
 {
 }
 
-__attribute__((unused))
-static void ops_disable(struct task_struct *p)
+__hidden
+void ops_disable(struct task_struct *p)
 {
 }
 
@@ -580,8 +580,8 @@ static void ops_disable(struct task_struct *p)
  * Callbacks for inspecting task state transitions
  */
 
-__attribute__((unused))
-static void ops_runnable(struct task_struct *p, u64 enq_flags)
+__hidden
+void ops_runnable(struct task_struct *p, u64 enq_flags)
 {
         struct task_ctx *taskc;
 
@@ -601,8 +601,8 @@ static void ops_runnable(struct task_struct *p, u64 enq_flags)
 	change_task_state(taskc, TASK_STATE_RUNNABLE);
 }
 
-__attribute__((unused))
-static void ops_running(struct task_struct *p)
+__hidden
+void ops_running(struct task_struct *p)
 {
 	struct task_ctx *taskc;
         s32 cpu = bpf_get_smp_processor_id();
@@ -619,7 +619,7 @@ static void ops_running(struct task_struct *p)
 	change_task_state(taskc, TASK_STATE_RUNNING);
 }
 
-__attribute__((unused))
+__hidden
 void ops_stopping(struct task_struct *p, bool runnable)
 {
 	struct task_ctx *taskc;
@@ -633,8 +633,8 @@ void ops_stopping(struct task_struct *p, bool runnable)
 	change_task_state(taskc, TASK_STATE_STOPPING);
 }
 
-__attribute__((unused))
-static void ops_quiescent(struct task_struct *p, u64 deq_flags)
+__hidden
+void ops_quiescent(struct task_struct *p, u64 deq_flags)
 {
         u64 sum_exec_runtime_delta;
 	struct task_ctx *taskc;
@@ -674,8 +674,8 @@ static void ops_quiescent(struct task_struct *p, u64 deq_flags)
  * Callbacks for scheduling decisions
  */
 
-__attribute__((unused))
-static s32 ops_select_cpu(struct task_struct *p, s32 prev_cpu, u64 wake_flags)
+__hidden
+s32 ops_select_cpu(struct task_struct *p, s32 prev_cpu, u64 wake_flags)
 {
         s32 cpu;
         struct task_ctx *taskc;
@@ -694,7 +694,7 @@ static s32 ops_select_cpu(struct task_struct *p, s32 prev_cpu, u64 wake_flags)
 			/*
 			 * If there exists an idle CPU, then dispatch task to local DSQ of it.
 			 */
-                        scx_bpf_dispatch(p, SCX_DSQ_LOCAL, SCX_SLICE_INF, 0);
+                        scx_bpf_dsq_insert(p, SCX_DSQ_LOCAL, SCX_SLICE_INF, 0);
                         scx_bpf_kick_cpu(cpu, SCX_KICK_IDLE);
                 } else {
 			/*
@@ -705,7 +705,7 @@ static s32 ops_select_cpu(struct task_struct *p, s32 prev_cpu, u64 wake_flags)
         } else {
                 cpu = scx_bpf_pick_idle_cpu(&housekeeping_cpumask.cpumask, 0);
                 if (cpu >= 0) {
-                        scx_bpf_dispatch(p, SCX_DSQ_LOCAL, SCX_SLICE_DFL, 0);
+                        scx_bpf_dsq_insert(p, SCX_DSQ_LOCAL, SCX_SLICE_DFL, 0);
                         scx_bpf_kick_cpu(cpu, SCX_KICK_IDLE);
                 } else {
                         cpu = prev_cpu;
@@ -715,8 +715,8 @@ static s32 ops_select_cpu(struct task_struct *p, s32 prev_cpu, u64 wake_flags)
         return cpu;
 }
 
-__attribute__((unused))
-static void ops_enqueue(struct task_struct *p, u64 enq_flags)
+__hidden
+void ops_enqueue(struct task_struct *p, u64 enq_flags)
 {
         s32 cpu;
 	struct task_ctx *taskc;
@@ -733,7 +733,7 @@ static void ops_enqueue(struct task_struct *p, u64 enq_flags)
                  * dispatchs to global DSQ.
                  */
                 if (p->nr_cpus_allowed == 1 && (p->flags & PF_KTHREAD)) {
-                        scx_bpf_dispatch(p, SCX_DSQ_LOCAL, SCX_SLICE_DFL, enq_flags);
+                        scx_bpf_dsq_insert(p, SCX_DSQ_LOCAL, SCX_SLICE_DFL, enq_flags);
                         return;
                 }
 
@@ -748,7 +748,7 @@ static void ops_enqueue(struct task_struct *p, u64 enq_flags)
 
 		barrier();
 
-                scx_bpf_dispatch_vtime(p, EDF_DSQ, SCX_SLICE_INF, taskc->edf.deadline, enq_flags);
+                scx_bpf_dsq_insert_vtime(p, EDF_DSQ, SCX_SLICE_INF, taskc->edf.deadline, enq_flags);
                 /*
                  * If there is an CPU where a lower priority task is running, then kick it.
                  */
@@ -757,12 +757,12 @@ static void ops_enqueue(struct task_struct *p, u64 enq_flags)
                         scx_bpf_kick_cpu(cpu, SCX_KICK_PREEMPT);
                 }
         } else {
-                scx_bpf_dispatch(p, SHARED_DSQ, SCX_SLICE_DFL, enq_flags);
+                scx_bpf_dsq_insert(p, SHARED_DSQ, SCX_SLICE_DFL, enq_flags);
         }
 }
 
-__attribute__((unused))
-static void ops_dispatch(s32 cpu, struct task_struct *prev)
+__hidden
+void ops_dispatch(s32 cpu, struct task_struct *prev)
 {
 	bool consumed;
 
@@ -773,18 +773,18 @@ static void ops_dispatch(s32 cpu, struct task_struct *prev)
 		 * If prev is swapper thread, then do consume.
 		 */
 		if (!prev || prev->pid == 0 || should_preempt(prev)) {
-			consumed = scx_bpf_consume(EDF_DSQ);
+			consumed = scx_bpf_dsq_move_to_local(EDF_DSQ);
 			if (consumed) {
 				__sync_fetch_and_sub(&nr_task_edf_dsq, 1); 
 			}
 		}
         } else {
-                scx_bpf_consume(SHARED_DSQ);
+                scx_bpf_dsq_move_to_local(SHARED_DSQ);
         }
 }
 
-__attribute__((unused))
-static void ops_set_cpumask(struct task_struct *p, const struct cpumask *cpumask)
+__hidden
+void ops_set_cpumask(struct task_struct *p, const struct cpumask *cpumask)
 {
         struct task_ctx *taskc;
 
@@ -802,8 +802,8 @@ static void ops_set_cpumask(struct task_struct *p, const struct cpumask *cpumask
         taskc->isolated = task_is_isolated(p);
 }
 
-__attribute__((unused))
-static void ops_set_weight(struct task_struct *p, u32 weight)
+__hidden
+void ops_set_weight(struct task_struct *p, u32 weight)
 {
         struct task_ctx *taskc;
 
@@ -816,8 +816,8 @@ static void ops_set_weight(struct task_struct *p, u32 weight)
 }
 
 // MARK: tick/update_idle/..
-__attribute__((unused))
-static void ops_tick(struct task_struct *p)
+__hidden
+void ops_tick(struct task_struct *p)
 {
 	if (!p)
 		return;
@@ -826,8 +826,8 @@ static void ops_tick(struct task_struct *p)
 		p->scx.slice = 0;
 }
 
-__attribute__((unused))
-static void ops_update_idle(s32 cpu, bool idle)
+__hidden
+void ops_update_idle(s32 cpu, bool idle)
 {
 	if (!bpf_cpumask_test_cpu(cpu, &isolated_cpumask.cpumask)) {
 		return;

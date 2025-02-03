@@ -189,6 +189,6 @@ struct task_deadline_aux {
 	u64 deadline;
 };
 
-const u64 ENTRY_SIZE = sizeof(struct entry_header);
+static const u64 ENTRY_SIZE = sizeof(struct entry_header);
 
 #endif /* __INTF_H */

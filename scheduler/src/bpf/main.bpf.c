@@ -6,8 +6,7 @@
 #include <bpf/bpf_helpers.h>
 char _license[] SEC("license") = "GPL";
 
-// #include "scheds/template.bpf.c"
-#include "isolcpus.bpf.c"
+#include "sched.bpf.h"
 
 #define BPF_RINGBUF_SIZE (4096 * 4096)
 
@@ -316,7 +315,8 @@ static void record_update_idle(u64 start, u64 end, s32 cpu, bool idle)
 	bpf_ringbuf_output(&cb_history_rb, &buf, buf_size, 0);
 }
 
-static void record_task_deadline(struct task_struct *p, u64 wake_up_time, u64 relative_deadline, u64 deadline)
+__hidden
+void record_task_deadline(struct task_struct *p, u64 wake_up_time, u64 relative_deadline, u64 deadline)
 {
 	const static u64 hdr_size = sizeof(struct entry_header);
 	const static u64 buf_size = hdr_size + sizeof(struct task_deadline_aux);
