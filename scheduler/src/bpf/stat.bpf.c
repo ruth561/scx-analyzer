@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-#include "stats.bpf.h"
+#include "stat.bpf.h"
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
 
@@ -45,7 +45,7 @@ void stat_per_cpu_init(s32 cpu)
 {
 	struct cpu_stat *stat = get_cpu_stat_or_ret(cpu);
 
-	bpf_printk("[*] stats_per_cpu_init: cpu=%d", cpu);
+	bpf_printk("[*] stat_per_cpu_init: cpu=%d", cpu);
 
 	stat->is_initialized = false;
 	stat->idl_time = 0;
@@ -53,7 +53,7 @@ void stat_per_cpu_init(s32 cpu)
 }
 
 __hidden
-void stats_at_update_idle(s32 cpu, bool idle)
+void stat_at_update_idle(s32 cpu, bool idle)
 {
 	struct cpu_stat *stat = get_cpu_stat_or_ret(cpu);
 	u64 now = bpf_ktime_get_boot_ns();
@@ -134,7 +134,7 @@ struct task_stat *get_task_stat(struct task_struct *p)
 	} while (0)
 
 /*
- * This function is called before the stats of @p are taken.
+ * This function is called before the stat of @p are taken.
  */
 __hidden
 void stat_per_task_init(struct task_struct *p)

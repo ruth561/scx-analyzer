@@ -13,6 +13,6 @@ void stat_at_running(struct task_struct *p);
 void stat_at_stopping(struct task_struct *p, bool runnable);
 void stat_at_quiescent(struct task_struct *p, u64 deq_flags);
 
-void stats_at_update_idle(s32 cpu, bool idle);
+void stat_at_update_idle(s32 cpu, bool idle);
 
 #endif

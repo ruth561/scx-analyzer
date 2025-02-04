@@ -9,7 +9,7 @@
 
 #include <bpf/bpf_helpers.h>
 
-#include "stats.bpf.h"
+#include "stat.bpf.h"
 
 
 #define U64_MAX 0xFFFFFFFFFFFFFFFF
@@ -799,7 +799,7 @@ void ops_tick(struct task_struct *p)
 __hidden
 void ops_update_idle(s32 cpu, bool idle)
 {
-	stats_at_update_idle(cpu, idle);
+	stat_at_update_idle(cpu, idle);
 
 	if (!bpf_cpumask_test_cpu(cpu, &isolated_cpumask.cpumask)) {
 		return;
