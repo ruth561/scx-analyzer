@@ -1,8 +1,9 @@
 use utils::bpf::task_storage::TaskStorage;
+use inquire::Text;
 
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct TaskStat {
 	state: u32,
 	timestamp: u64,
@@ -12,24 +13,65 @@ struct TaskStat {
 	quiescent_time: u64,
 }
 
-impl TaskStat {
-	fn new() -> TaskStat {
-		TaskStat {
-			state: 0,
-			timestamp: 0,
-			runnable_time: 0,
-			running_time: 0,
-			stopping_time: 0,
-			quiescent_time: 0,
-		}
-	}
+#[repr(C)]
+#[derive(Debug, Default)]
+struct TaskStats {
+	count: u64,
+	sum_exectime: u64,
+	avg_exectime: u64,
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+struct EdfEntity {
+	wake_up_time: u64,
+	relative_deadline: u64,
+	deadline: u64,
+	exectime: u64,
+	estimated_exectime: u64,
+	prev_sum_exec_runtime: u64,
+}
+
+#[repr(C)]
+#[derive(Debug, Default)]
+struct TaskCtx {
+	tmp_cpumask: u64,
+	state: i32,
+	isolated: bool,
+	stats_on: bool,
+	edf: EdfEntity,
+	stats: TaskStats,
 }
 
 fn main() {
-	let task_storage = TaskStorage::new("task_stat").unwrap();
-	let mut stat = TaskStat::new();
-	let tid = 774752;
+	let task_stat = TaskStorage::new("task_stat").unwrap();
+	let task_ctx = TaskStorage::new("task_ctx").unwrap();
+	let mut stat = TaskStat::default();
+	let mut ctx = TaskCtx::default();
 
-	task_storage.lookup_elem(tid, &mut stat).unwrap();
-	println!("{:?}", stat);
+	loop {
+		let tid_s = Text::new("tid>").prompt().unwrap();
+
+		let tid = match i32::from_str_radix(&tid_s, 10) {
+			Ok(-1) => break,
+			Ok(tid) => tid,
+			Err(_) => {
+				println!("Please enter an integer");
+				continue;
+			}
+		};
+		
+		if task_stat.lookup_elem(tid, &mut stat).is_err() {
+			println!("Failed to read from a BPF map 'task_stat'");
+			continue;
+		}
+
+		if task_ctx.lookup_elem(tid, &mut ctx).is_err() {
+			println!("Failed to read from a BPF map 'task_ctx'");
+			continue;
+		}
+
+		println!("task_stat: {:?}", stat);
+		println!("task_ctx: {:?}", ctx);
+	}
 }
