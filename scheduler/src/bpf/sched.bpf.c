@@ -81,8 +81,7 @@ struct edf_entity {
 	u64 relative_deadline;
 	u64 deadline;
 
-	u64 exectime;
-	u64 estimated_exectime;
+	u64 sched_hint;
 
 	/*
 	 * Internal use
@@ -183,8 +182,7 @@ static void init_edf_entity(struct task_struct *p, struct task_ctx* taskc)
 	taskc->edf.prev_sum_exec_runtime = p->se.sum_exec_runtime;
 	taskc->edf.relative_deadline = U64_MAX;
 	taskc->edf.deadline = U64_MAX;
-	taskc->edf.exectime = U64_MAX;
-	taskc->edf.estimated_exectime = U64_MAX;
+	taskc->edf.sched_hint = U64_MAX;
 }
 
 // MARK: cpu_ctx
@@ -400,7 +398,7 @@ static long user_ringbuf_callback(struct bpf_dynptr *dynptr, void *ctx)
 	// bpf_printk("[*] %s[%d] (before): exectime=%ld, relative_deadline=%ld, deadline=%ld",
         //         p->comm, p->pid, taskc->edf.exectime, taskc->edf.relative_deadline, taskc->edf.deadline);
 
-	taskc->edf.exectime = msg.exectime;
+	taskc->edf.sched_hint = msg.exectime;
 	taskc->edf.relative_deadline = msg.relative_deadline;
 	/*
 	 * taskc->edf.deadline deadline is set when task wakes up.
