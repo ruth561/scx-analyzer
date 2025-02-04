@@ -41,7 +41,7 @@ fn get_errno() -> i32 {
 	unsafe { *libc::__errno_location() }
 }
 
-fn get_errno_string() -> String {
+pub fn get_errno_string() -> String {
 	unsafe {
 		let c_str = libc::strerror(get_errno());
 		if c_str.is_null() {
