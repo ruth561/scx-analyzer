@@ -1,3 +1,4 @@
 .cache/
 target/
 compile_commands.json
+log.txt
