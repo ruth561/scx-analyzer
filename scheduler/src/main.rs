@@ -10,6 +10,7 @@ use libbpf_rs::skel::OpenSkel;
 use libbpf_rs::skel::Skel;
 use libbpf_rs::skel::SkelBuilder;
 use libbpf_rs::Link;
+use libbpf_rs::RingBufferBuilder;
 
 use anyhow::Context;
 use anyhow::Result;
@@ -30,6 +31,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 unsafe impl Plain for entry_header {}
+unsafe impl Plain for task_work_info {}
 
 use clap::Parser;
 
@@ -66,6 +68,13 @@ fn parse_cpus_str(cpu_str_arg: &str) -> u64
     cpumask
 }
 
+fn logger_rb_recorder(data: &[u8]) -> i32
+{
+    let entry: &task_work_info = plain::from_bytes(data).unwrap();
+    println!("exectime={}, hint={}", entry.exectime, entry.sched_hint);
+    return 0;
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -89,9 +98,18 @@ fn main() {
     let mut skel: BpfSkel = scx_ops_load!(skel, scheduler_ops, uei).unwrap();
     let link: Link = scx_ops_attach!(skel, scheduler_ops).unwrap();
     
+    let mut builder = RingBufferBuilder::new();
+    builder.add(&skel.maps.logger_rb, move |data| {
+        logger_rb_recorder(data)
+    }).unwrap();
+    let ringbuf = builder.build().unwrap();
+
     println!("[*] BPF scheduler starting!");
 
     while !shutdown.load(Ordering::Relaxed) && !uei_exited!(&skel, uei) {
+        if ringbuf.poll(std::time::Duration::from_millis(10)).is_err() {
+            break;
+        }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 

@@ -191,4 +191,9 @@ struct task_deadline_aux {
 
 static const u64 ENTRY_SIZE = sizeof(struct entry_header);
 
+struct task_work_info {
+	u64 exectime;
+	u64 sched_hint;
+};
+
 #endif /* __INTF_H */

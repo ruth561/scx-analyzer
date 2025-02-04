@@ -10,7 +10,7 @@
 #include <bpf/bpf_helpers.h>
 
 #include "stat.bpf.h"
-
+#include "logger.bpf.h"
 
 #define U64_MAX 0xFFFFFFFFFFFFFFFF
 
@@ -67,7 +67,7 @@ struct bpf_cpumask isolated_idle_cpumask;
 struct bpf_cpumask housekeeping_cpumask;
 
 // MARK: task_ctx
-enum task_state {
+enum task_state_ {
 	TASK_STATE_RUNNABLE,
 	TASK_STATE_QUIESCENT,
 	TASK_STATE_RUNNING,
@@ -613,14 +613,21 @@ __hidden
 void ops_quiescent(struct task_struct *p, u64 deq_flags)
 {
 	struct task_ctx *taskc;
-
-	stat_at_quiescent(p, deq_flags);
+	struct task_stat *stat = get_task_stat_or_ret(p);
+	struct task_work_info info;
 
 	taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
 	if (!taskc) {
 		scx_bpf_error("ops_quiescent: Failed to get task local storage.");
 		return;
 	}
+
+	info.exectime = stat->exectime_acm;
+	info.sched_hint = taskc->edf.sched_hint;
+	if (info.sched_hint != U64_MAX) {
+		LOGGER(&info);
+	}
+	stat_at_quiescent(p, deq_flags);
 
 	if (taskc->isolated) {
 		u64 now = bpf_ktime_get_boot_ns();

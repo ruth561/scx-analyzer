@@ -17,6 +17,7 @@ fn main() {
 		.enable_skel("src/bpf/main.bpf.c", "bpf")
 		.add_source("src/bpf/sched.bpf.c")
 		.add_source("src/bpf/stat.bpf.c")
+		.add_source("src/bpf/logger.bpf.c")
 		.compile_link_gen()
 		.unwrap();
 }
