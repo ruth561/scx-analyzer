@@ -76,12 +76,6 @@ enum task_state {
 	TASK_STATE_MIGRATING,
 };
 
-struct task_stats {
-	u64 count;
-	u64 sum_exectime;
-	u64 avg_exectime;
-};
-
 struct edf_entity {
 	u64 wake_up_time;
 	u64 relative_deadline;
@@ -100,9 +94,7 @@ struct task_ctx {
 	struct bpf_cpumask __kptr *tmp_cpumask;
 	int state;
         bool isolated;
-	bool stats_on;
         struct edf_entity edf;
-        struct task_stats stats;
 };
 
 struct {
@@ -193,23 +185,6 @@ static void init_edf_entity(struct task_struct *p, struct task_ctx* taskc)
 	taskc->edf.deadline = U64_MAX;
 	taskc->edf.exectime = U64_MAX;
 	taskc->edf.estimated_exectime = U64_MAX;
-}
-
-static void init_task_stats(struct task_struct *p, struct task_ctx* taskc)
-{
-        /*
-         * Init task stats
-         */
-	taskc->stats.count = 0;
-	taskc->stats.sum_exectime = 0;
-	taskc->stats.avg_exectime = 0;       
-}
-
-static void fini_task_stats(struct task_struct *p, struct task_ctx* taskc)
-{
-        /*
-         * Called when taskc->stats_on is disabled.
-         */  
 }
 
 // MARK: cpu_ctx
@@ -544,8 +519,6 @@ s32 ops_init_task(struct task_struct *p, struct scx_init_task_args *args)
 
 	init_edf_entity(p, taskc);
 
-	init_task_stats(p, taskc);
-
 	stat_per_task_init(p);
 
         return 0;
@@ -561,13 +534,6 @@ void ops_exit_task(struct task_struct *p, struct scx_exit_task_args *args)
 		scx_bpf_error("[!] exit_task: Failed to create task local storage");
 		return;
 	}
-
-        if (taskc->isolated) {
-                bpf_printk("[*] exit_task: %s[%d] (isolated) stats.avg_exectime=%ld",
-                        p->comm, p->pid, taskc->stats.avg_exectime);
-        }
-
-	fini_task_stats(p, taskc);
 }
 
 // MARK: enable/disable
@@ -648,7 +614,6 @@ void ops_stopping(struct task_struct *p, bool runnable)
 __hidden
 void ops_quiescent(struct task_struct *p, u64 deq_flags)
 {
-        u64 sum_exec_runtime_delta;
 	struct task_ctx *taskc;
 
 	stat_at_quiescent(p, deq_flags);
@@ -658,15 +623,6 @@ void ops_quiescent(struct task_struct *p, u64 deq_flags)
 		scx_bpf_error("ops_quiescent: Failed to get task local storage.");
 		return;
 	}
-
-        /*
-	 * Records task statistics
-	 * sched_switch で測ったほうがいいのでは？
-	 */
-	sum_exec_runtime_delta = p->se.sum_exec_runtime - taskc->edf.prev_sum_exec_runtime;
-	taskc->stats.count++;
-	taskc->stats.sum_exectime += sum_exec_runtime_delta;
-	taskc->stats.avg_exectime = taskc->stats.sum_exectime / taskc->stats.count;
 
 	if (taskc->isolated) {
 		u64 now = bpf_ktime_get_boot_ns();

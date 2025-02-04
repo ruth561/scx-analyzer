@@ -11,14 +11,9 @@ struct TaskStat {
 	running_time: u64,
 	stopping_time: u64,
 	quiescent_time: u64,
-}
-
-#[repr(C)]
-#[derive(Debug, Default)]
-struct TaskStats {
-	count: u64,
-	sum_exectime: u64,
-	avg_exectime: u64,
+	work_cnt: u64,
+	exectime_acm: u64,
+	exectime_sum: u64,
 }
 
 #[repr(C)]
@@ -40,7 +35,6 @@ struct TaskCtx {
 	isolated: bool,
 	stats_on: bool,
 	edf: EdfEntity,
-	stats: TaskStats,
 }
 
 fn main() {

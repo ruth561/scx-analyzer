@@ -93,6 +93,14 @@ struct task_stat {
 	u64	running_time;
 	u64	stopping_time;
 	u64	quiescent_time;
+
+	/*
+	 * The average exection time per work can be calculated using the following formula:
+	 *   exectime_avg = exectime_sum / work_cnt
+	 */
+	u64	work_cnt;	/* Counter representing how often the thread wakes up to perform its work. */
+	u64	exectime_acm;	/* Accmulated exectime from runnable to quiescent state */
+	u64	exectime_sum;	/* Total CPU time consumed by the thread. */
 };
 
 struct {
@@ -142,6 +150,10 @@ void stat_per_task_init(struct task_struct *p)
 	stat->running_time = 0;
 	stat->stopping_time = 0;
 	stat->quiescent_time = 0;
+
+	stat->work_cnt = 0;
+	stat->exectime_acm = 0;
+	stat->exectime_sum = 0;
 }
 
 __hidden
@@ -151,6 +163,7 @@ void stat_at_runnable(struct task_struct *p, u64 enq_flags)
 	struct task_stat *stat = get_task_stat_or_ret(p);
 
 	update_stat_state(stat, quiescent, runnable, now);
+	assert(stat->exectime_acm == 0);
 }
 
 __hidden
@@ -171,8 +184,10 @@ void stat_at_stopping(struct task_struct *p, bool runnable)
 {
 	u64 now = bpf_ktime_get_boot_ns();
 	struct task_stat *stat = get_task_stat_or_ret(p);
+	u64 elapsed_time = now - stat->timestamp;
 
 	update_stat_state(stat, running, stopping, now);
+	stat->exectime_acm += elapsed_time;
 }
 
 __hidden
@@ -185,5 +200,11 @@ void stat_at_quiescent(struct task_struct *p, u64 deq_flags)
 		update_stat_state(stat, runnable, quiescent, now);
 	} else {
 		update_stat_state(stat, stopping, quiescent, now);
+	}
+
+	if (stat->exectime_acm) {
+		stat->exectime_sum += stat->exectime_acm;
+		stat->exectime_acm = 0;
+		stat->work_cnt += 1;
 	}
 }
