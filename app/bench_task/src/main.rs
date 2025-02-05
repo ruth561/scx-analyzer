@@ -133,6 +133,9 @@ fn waker_thread_main(txes: Vec<Sender<ChanMsg>>, tids: Vec<i32>, cli: &Cli)
 
 fn worker_thread_main(rx: Receiver<ChanMsg>)
 {
+	let mut buf = vec![0u64; 10 * 1000 * 1000];
+	buf[0] = 1;
+	buf[1] = 1;
 	loop {
 		let msg = rx.recv().unwrap();
 
@@ -142,9 +145,8 @@ fn worker_thread_main(rx: Receiver<ChanMsg>)
 				bench::float::busy(msg.weight);
 			},
 			BenchType::CacheBusy => {
-				bench::cache::busy(msg.weight);
+				bench::cache::busy(msg.weight, &mut buf);
 			},
-			_ => println!("ERROR: Invalid bench type"),
 		}
 	}
 }
