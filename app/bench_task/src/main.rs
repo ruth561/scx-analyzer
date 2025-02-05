@@ -103,6 +103,9 @@ fn waker_thread_main(txes: Vec<Sender<ChanMsg>>, tids: Vec<i32>, cli: &Cli)
 		Bench::Dual { bench1, bench2 } => (bench1, Some(bench2)),
 	};
 
+	println!("bench1: {:?}", bench1);
+	println!("bench2: {:?}", bench2_opt);
+
 	let mut rng = rand::rng();
 	let nums: Vec<u64> = (1..200).collect();
 	loop {
@@ -135,6 +138,12 @@ fn worker_thread_main(rx: Receiver<ChanMsg>)
 
 		match msg.bench_type {
 			BenchType::IntBusy => bench::int::busy(msg.weight),
+			BenchType::FloatBusy => {
+				bench::float::busy(msg.weight);
+			},
+			BenchType::CacheBusy => {
+				bench::cache::busy(msg.weight);
+			},
 			_ => println!("ERROR: Invalid bench type"),
 		}
 	}
