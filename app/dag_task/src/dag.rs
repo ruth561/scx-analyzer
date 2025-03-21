@@ -7,19 +7,19 @@ use petgraph::graph::DiGraph;
 
 
 // similar to a thread id
-type Reactor = u32;
+pub type Reactor = usize;
 
 #[derive(Debug)]
-struct DagTask {
-	id: usize,
-	nr_nodes: usize,
-	node_to_reactor: Vec<Reactor>,
-	reactor_to_node: HashMap<Reactor, usize>,
-	edges: Vec<Vec<usize>>,
+pub struct DagTask {
+	pub id: usize,
+	pub nr_nodes: usize,
+	pub node_to_reactor: Vec<Reactor>,
+	pub reactor_to_node: HashMap<Reactor, usize>,
+	pub edges: Vec<Vec<usize>>,
 }
 
 impl DagTask {
-	fn new(id: usize) -> Self {
+	pub fn new(id: usize) -> Self {
 		Self {
 			id,
 			nr_nodes: 0,
@@ -34,7 +34,7 @@ impl DagTask {
 struct TaskGraph {
 	nr_tasks: usize,
 	task_to_reactor: Vec<Reactor>, // task_to_reactor[i]: the i-th reactor id
-	reactor_to_task: HashMap<u32, usize>,
+	reactor_to_task: HashMap<Reactor, usize>,
 	edges: Vec<Vec<usize>>,
 }
 
@@ -154,15 +154,15 @@ impl TaskGraph {
 
 /// This strucure is for building a TaskGraph instance.
 #[derive(Debug)]
-struct TaskGraphBuilder {
-	reactors: HashSet<Reactor>,
-	subs: HashMap<String, HashSet<Reactor>>, // topic name -> [reactor id]
-	pubs: HashMap<String, HashSet<Reactor>>, // topic name -> [reactor id]
-	topics: HashSet<String>,
+pub struct TaskGraphBuilder {
+	pub reactors: HashSet<Reactor>,
+	pub subs: HashMap<String, HashSet<Reactor>>, // topic name -> [reactor id]
+	pub pubs: HashMap<String, HashSet<Reactor>>, // topic name -> [reactor id]
+	pub topics: HashSet<String>,
 }
 
 impl TaskGraphBuilder {
-	fn new() -> Self {
+	pub fn new() -> Self {
 		Self {
 			reactors: HashSet::new(),
 			subs: HashMap::new(),
@@ -172,7 +172,7 @@ impl TaskGraphBuilder {
 	}
 
 	/// @reactor: Reactor id
-	fn reg_reactor(&mut self, reactor: Reactor, subs: Vec<String>, pubs: Vec<String>) {
+	pub fn reg_reactor(&mut self, reactor: Reactor, subs: Vec<String>, pubs: Vec<String>) {
 		assert!(!self.reactors.contains(&reactor));
 
 		for s in &subs {
@@ -202,13 +202,13 @@ impl TaskGraphBuilder {
 		self.reactors.insert(reactor);
 	}
 
-	fn build(&self) -> TaskGraph {
+	pub fn build(&self) -> TaskGraph {
 		let nr_tasks = self.reactors.len();
 		let mut task_to_reactor = vec![];
 		let mut reactor_to_task = HashMap::new();
 		let mut edges = vec![vec![]; nr_tasks];
 
-		let mut reactors: Vec<&u32> = self.reactors.iter().collect();
+		let mut reactors: Vec<_> = self.reactors.iter().collect();
 		reactors.sort();
 		for (i, reactor) in reactors.iter().enumerate() {
 			task_to_reactor.push(**reactor);

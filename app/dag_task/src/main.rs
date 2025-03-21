@@ -7,6 +7,7 @@ use std::sync::mpsc::Sender;
 use std::time::Duration;
 
 mod dag;
+mod HEFT;
 
 /*
  * Performs a busy-wait loop for the given weight.
