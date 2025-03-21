@@ -8,6 +8,7 @@ use std::time::Duration;
 
 mod dag;
 mod HEFT;
+mod HLBS;
 
 /*
  * Performs a busy-wait loop for the given weight.
