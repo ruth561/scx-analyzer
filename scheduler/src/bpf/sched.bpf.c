@@ -155,12 +155,14 @@ static inline void set_dag_info(struct task_ctx *taskc, s32 dag_task_id, s32 nod
 {
 	taskc->dag_info.dag_task_id = dag_task_id;
 	taskc->dag_info.node_id = node_id;
+	taskc->is_dag_task = true;
 }
 
 static inline void init_dag_info(struct task_ctx *taskc)
 {
 	taskc->is_dag_task = false;
-	set_dag_info(taskc, -1, -1);
+	taskc->dag_info.dag_task_id = -1;
+	taskc->dag_info.node_id = -1;
 }
 
 /* (task_state) */
@@ -348,6 +350,126 @@ struct {
 	__type(value, struct dag_tasks_map_value);
 } dag_tasks SEC(".maps");
 
+static void __dag_tasks_free(s32 dag_task_id)
+{
+	struct bpf_dag_task *dag_task;
+	struct dag_tasks_map_value *v;
+
+	v = bpf_map_lookup_elem(&dag_tasks, &dag_task_id);
+	if (!v) {
+		bpf_printk("[W:dag_tasks_free] There is no entry in dag_tasks with key=%d", dag_task_id);
+		return;
+	}
+
+	dag_task = bpf_kptr_xchg(&v->dag_task, NULL);
+
+	if (dag_task) {
+		bpf_printk("[I] Free a DAG task (dag_task_id=%d, dag_task_slot_id=%d)", dag_task_id, dag_task->id);
+		bpf_dag_task_free(dag_task);
+	}
+}
+
+static s32 __dag_tasks_get_weight(s32 dag_task_id, s32 node_id)
+{
+	s32 weight;
+	struct bpf_dag_task *dag_task, *old;
+	struct dag_tasks_map_value *v;
+
+	v = bpf_map_lookup_elem(&dag_tasks, &dag_task_id);
+	if (!v) {
+		bpf_printk("[W:dag_tasks_get_weight] There is no entry in dag_tasks with key=%d", dag_task_id);
+		return -1;
+	}
+
+	dag_task = bpf_kptr_xchg(&v->dag_task, NULL); // acquire ownership
+	if (!dag_task) {
+		bpf_printk("[W:dag_tasks_get_weight] dag_tasks[%d]->dag_task is NULL", dag_task_id);
+		return -1;
+	}
+
+	weight = bpf_dag_task_get_weight(dag_task, node_id);
+
+	old = bpf_kptr_xchg(&v->dag_task, dag_task);
+
+	if (old)
+		bpf_dag_task_free(old);
+
+	return weight;
+}
+
+static s32 __dag_tasks_set_weight(s32 dag_task_id, s32 node_id, s32 weight)
+{
+	s32 ret;
+	struct bpf_dag_task *dag_task, *old;
+	struct dag_tasks_map_value *v;
+
+	v = bpf_map_lookup_elem(&dag_tasks, &dag_task_id);
+	if (!v) {
+		bpf_printk("[W:dag_tasks_set_weight] There is no entry in dag_tasks with key=%d", dag_task_id);
+		return -1;
+	}
+
+	dag_task = bpf_kptr_xchg(&v->dag_task, NULL); // acquire ownership
+	if (!dag_task) {
+		bpf_printk("[W:dag_tasks_set_weight] dag_tasks[%d]->dag_task is NULL", dag_task_id);
+		return -1;
+	}
+
+	ret = bpf_dag_task_set_weight(dag_task, node_id, weight);
+
+	old = bpf_kptr_xchg(&v->dag_task, dag_task);
+
+	if (old)
+		bpf_dag_task_free(old);
+
+	return ret;
+}
+
+__attribute__((unused))
+static s32 task_ctx_get_weight(struct task_ctx *taskc)
+{
+	s32 weight;
+
+	if (taskc->is_dag_task) {
+		s32 dag_task_id = taskc->dag_info.dag_task_id;
+		s32 node_id = taskc->dag_info.node_id;
+
+		weight = __dag_tasks_get_weight(dag_task_id, node_id);
+		if (weight < 0) {
+			__dag_tasks_free(dag_task_id);
+			taskc->is_dag_task = false;
+		}
+		return weight;
+	} else {
+		return -1;
+	}
+}
+
+__attribute__((unused))
+static void task_ctx_set_weight(struct task_ctx *taskc, s32 weight)
+{
+	s32 err, dag_task_id, node_id;
+
+	if (!taskc->is_dag_task)
+		return;
+
+	dag_task_id = taskc->dag_info.dag_task_id;
+	node_id = taskc->dag_info.node_id;
+
+	err = __dag_tasks_set_weight(dag_task_id, node_id, weight);
+	if (err) {
+		__dag_tasks_free(dag_task_id);
+		taskc->is_dag_task = false;
+	}
+}
+
+static void task_ctx_free_dag_task(struct task_ctx *taskc)
+{
+	if (taskc->is_dag_task) {
+		__dag_tasks_free(taskc->dag_info.dag_task_id);
+	}
+}
+
 // MARK: urb
 /*******************************************************************************
  * Implementation for the user ring buffer
@@ -392,9 +514,9 @@ static long handle_new_dag_task(struct bpf_dag_msg_new_task_payload *payload)
 		goto err_task_struct_release;
 	}
 
-	set_dag_info(taskc, dag_task->id, 0);
-	bpf_printk("[DAG] ALLOC a DAG-task! tid=%d, dag_task_id=%d, node_id=0",
-		payload->src_node_tid, dag_task->id);
+	set_dag_info(taskc, payload->src_node_tid, 0);
+	bpf_printk("[DAG] ALLOC a DAG-task! tid=%d, dag_task_id=%d, dag_task_slot_id=%d node_id=0",
+		payload->src_node_tid, payload->src_node_tid, dag_task->id);
 
 	/*
 	 * Saves the bpf_dag_task ptr to the BPF map.
@@ -717,6 +839,9 @@ void ops_exit_task(struct task_struct *p, struct scx_exit_task_args *args)
 		scx_bpf_error("[!] exit_task: Failed to create task local storage");
 		return;
 	}
+
+	if (taskc->is_dag_task)
+		task_ctx_free_dag_task(taskc);
 }
 
 // MARK: enable/disable
