@@ -96,6 +96,11 @@ struct task_ctx {
         bool isolated;
 	bool is_dag_task;
         struct dag_info dag_info;
+	/*
+	 * This field stores the node priority calculated by bpf_dag_task_calc_XXXX_prio kfuncs.
+	 * If not set, it contains -1.
+	 */
+	s32 prio;
 };
 
 struct {
@@ -182,7 +187,7 @@ static void change_task_state(struct task_ctx* taskc, int new_state)
  */
 struct cpu_ctx {
 	s32 curr;
-	u64 curr_deadline; // TODO: replace with curr_prio
+	u64 curr_prio;
 };
 
 struct {
@@ -225,7 +230,7 @@ void update_cpu_ctx(struct task_struct *p)
 	}
 
 	cpuc->curr = p->pid;
-	// cpuc->curr_deadline = taskc->edf.deadline; // TODO:
+	cpuc->curr_prio = taskc->prio;
 }
 
 /*
@@ -235,8 +240,8 @@ void update_cpu_ctx(struct task_struct *p)
 static s32 find_preemptible_cpu(struct task_struct *p, struct task_ctx *taskc)
 {
 	struct cpu_ctx *cpuc;
-	s32 cpu;
-	u64 max_deadline = 0;
+	s32 ret, cpu;
+	u64 max_prio = 0;
 
 	bpf_for(cpu, 0, nr_cpus) {
 		if (!bpf_cpumask_test_cpu(cpu, &isolated_cpumask.cpumask))
@@ -253,18 +258,16 @@ static s32 find_preemptible_cpu(struct task_struct *p, struct task_ctx *taskc)
 			scx_bpf_error("find_preemptible_cpu: Failed to find cpu context");
 			return -1;
 		}
-		if (max_deadline < cpuc->curr_deadline) {
-			max_deadline = cpuc->curr_deadline;
-			// ret = cpu; // TODO:
+		if (max_prio < cpuc->curr_prio) {
+			max_prio = cpuc->curr_prio;
+			ret = cpu;
 		}
 	}
 
-	return -1;
-	// TODO: replace here with taskc->edf.prio
-	// if (taskc->edf.deadline < max_deadline)
-	// 	return ret;
-	// else
-	//  	return -1;
+	if (taskc->prio < max_prio)
+		return ret;
+	else
+	 	return -1;
 }
 
 static inline bool should_preempt(struct task_struct *current) {
@@ -318,16 +321,15 @@ static inline bool should_preempt(struct task_struct *current) {
 		goto out;
 	}
 
-	// TODO:
-	// /*
-	//  * Preemption should be performed if the deadline of a runnable task is closer
-	//  * than that of the current task. 
-	//  */
-	// if (pc->edf.deadline < currentc->edf.deadline) {
-	// 	ret = true;
-	// } else {
-	// 	ret = false;
-	// }
+	/*
+	 * Preemption should be performed if the deadline of a runnable task is closer
+	 * than that of the current task. 
+	 */
+	if (pc->prio < currentc->prio) {
+		ret = true;
+	} else {
+		ret = false;
+	}
 
 out:
 	bpf_iter_scx_dsq_destroy(&it);
@@ -423,6 +425,34 @@ static s32 __dag_tasks_set_weight(s32 dag_task_id, s32 node_id, s32 weight)
 		bpf_dag_task_free(old);
 
 	return ret;
+}
+
+static s32 __dag_tasks_get_prio(s32 dag_task_id, s32 node_id)
+{
+	s32 prio;
+	struct bpf_dag_task *dag_task, *old;
+	struct dag_tasks_map_value *v;
+
+	v = bpf_map_lookup_elem(&dag_tasks, &dag_task_id);
+	if (!v) {
+		bpf_printk("[W:dag_tasks_get_prio] There is no entry in dag_tasks with key=%d", dag_task_id);
+		return -1;
+	}
+
+	dag_task = bpf_kptr_xchg(&v->dag_task, NULL); // acquire ownership
+	if (!dag_task) {
+		bpf_printk("[W:dag_tasks_get_prio] dag_tasks[%d]->dag_task is NULL", dag_task_id);
+		return -1;
+	}
+
+	prio = bpf_dag_task_get_prio(dag_task, node_id);
+
+	old = bpf_kptr_xchg(&v->dag_task, dag_task);
+
+	if (old)
+		bpf_dag_task_free(old);
+
+	return prio;
 }
 
 static void __dag_tasks_culc_HELT_prio(s32 dag_task_id)
@@ -621,7 +651,7 @@ static inline long handle_add_node(struct bpf_dag_msg_add_node_payload *payload)
 	bpf_dag_task_dump(dag_task);
 
 	if (node_id >= 0) {
-		set_dag_info(taskc, dag_task->id, node_id);
+		set_dag_info(taskc, payload->dag_task_id, node_id);
 		bpf_printk("[DAG] ADD a node (tid=%d, node_id=%d) to a DAG-task (id=%d)",
 			payload->tid, node_id, dag_task->id);
 	} else {
@@ -851,6 +881,8 @@ s32 ops_init_task(struct task_struct *p, struct scx_init_task_args *args)
 
 	init_dag_info(taskc);
 
+	taskc->prio = -1;
+
 	stat_per_task_init(p);
 
         return 0;
@@ -945,8 +977,7 @@ __hidden
 void ops_quiescent(struct task_struct *p, u64 deq_flags)
 {
 	struct task_ctx *taskc;
-	struct task_stat *stat = get_task_stat_or_ret(p);
-	struct task_work_info info;
+	struct task_stat *stat;
 
 	taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
 	if (!taskc) {
@@ -954,23 +985,21 @@ void ops_quiescent(struct task_struct *p, u64 deq_flags)
 		return;
 	}
 
-	info.exectime = stat->exectime_acm;
-	// // TODO:
-	// // info.sched_hint = taskc->edf.sched_hint;
-	// if (info.sched_hint != U64_MAX) {
-	// 	LOGGER(&info);
-	// }
 	stat_at_quiescent(p, deq_flags);
 
-	// // TODO:
-	// // if (taskc->isolated) {
-	// // 	u64 now = bpf_ktime_get_boot_ns();
-	// // 	TODO:
-	// // 	if (taskc->edf.deadline < now) {
-	// // 		bpf_printk("[!] DEADLINE VIOLATION! deadline=%lld, now=%lld",
-	// // 			taskc->edf.deadline, now);
-	// // 	}
-	// // }
+	stat = get_task_stat_or_ret(p);
+	if (taskc->is_dag_task && stat && stat->work_cnt > 0) {
+		bpf_printk("[I] exectime_avg: %d", stat->exectime_sum / stat->work_cnt);
+	}
+
+	// TODO:
+	// if (taskc->isolated) {
+	// 	u64 now = bpf_ktime_get_boot_ns();
+	// 	if (taskc->edf.deadline < now) {
+	// 		bpf_printk("[!] DEADLINE VIOLATION! deadline=%lld, now=%lld",
+	// 			taskc->edf.deadline, now);
+	// 	}
+	// }
 
 	if (deq_flags & SCX_DEQ_SLEEP) {
 		change_task_state(taskc, TASK_STATE_QUIESCENT);
@@ -999,9 +1028,13 @@ s32 ops_select_cpu(struct task_struct *p, s32 prev_cpu, u64 wake_flags)
         consume_user_ringbuf();
 
 	if (taskc->is_dag_task) {
-		if (taskc->dag_info.node_id == 0) { // src node
-			__dag_tasks_culc_HELT_prio(taskc->dag_info.dag_task_id);
+		s32 dag_task_id = taskc->dag_info.dag_task_id;
+		s32 node_id = taskc->dag_info.node_id;
+
+		if (node_id == 0) { // src node
+			__dag_tasks_culc_HELT_prio(dag_task_id);
 		}
+		taskc->prio = __dag_tasks_get_prio(dag_task_id, node_id);
 	}
 
         if (taskc->isolated) {
@@ -1064,9 +1097,7 @@ void ops_enqueue(struct task_struct *p, u64 enq_flags)
 
 		barrier();
 
-		// TODO: replace taskc->edf.deadline with taskc->edf.prio
-                // scx_bpf_dsq_insert_vtime(p, EDF_DSQ, SCX_SLICE_INF, taskc->edf.deadline, enq_flags);
-		scx_bpf_dsq_insert_vtime(p, EDF_DSQ, SCX_SLICE_INF, 100, enq_flags); // TODO:
+                scx_bpf_dsq_insert_vtime(p, EDF_DSQ, SCX_SLICE_INF, taskc->prio, enq_flags);
 
                 /*
                  * If there is an CPU where a lower priority task is running, then kick it.
