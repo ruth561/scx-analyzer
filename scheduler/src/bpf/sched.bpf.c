@@ -94,6 +94,7 @@ struct task_ctx {
 	struct bpf_cpumask __kptr *tmp_cpumask;
 	int state;
         bool isolated;
+	bool is_dag_task;
         struct dag_info dag_info;
 };
 
@@ -158,6 +159,7 @@ static inline void set_dag_info(struct task_ctx *taskc, s32 dag_task_id, s32 nod
 
 static inline void init_dag_info(struct task_ctx *taskc)
 {
+	taskc->is_dag_task = false;
 	set_dag_info(taskc, -1, -1);
 }
 
