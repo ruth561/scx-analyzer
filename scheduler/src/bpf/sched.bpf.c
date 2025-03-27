@@ -988,9 +988,6 @@ void ops_quiescent(struct task_struct *p, u64 deq_flags)
 	stat_at_quiescent(p, deq_flags);
 
 	stat = get_task_stat_or_ret(p);
-	if (taskc->is_dag_task && stat && stat->work_cnt > 0) {
-		bpf_printk("[I] exectime_avg: %d", stat->exectime_sum / stat->work_cnt);
-	}
 
 	// TODO:
 	// if (taskc->isolated) {
