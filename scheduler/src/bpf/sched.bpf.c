@@ -1031,7 +1031,16 @@ s32 ops_select_cpu(struct task_struct *p, s32 prev_cpu, u64 wake_flags)
 		if (node_id == 0) { // src node
 			__dag_tasks_culc_HELT_prio(dag_task_id);
 		}
-		taskc->prio = __dag_tasks_get_prio(dag_task_id, node_id);
+
+		/*
+		 * In HELT, the rank is calculated and stored in `prio`.
+		 * A higher rank in HELT indicates a higher priority.
+		 * On the other hand, in sched_ext's DSQ, tasks with smaller `vtime`
+		 * are given higher priority.
+		 * Therefore, by using `S32_MAX - prio` as the `vtime` value,
+		 * the priority is properly mapped and handled.
+		 */
+		taskc->prio = 0x7fffffff - __dag_tasks_get_prio(dag_task_id, node_id);
 	}
 
         if (taskc->isolated) {
