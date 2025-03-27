@@ -425,6 +425,33 @@ static s32 __dag_tasks_set_weight(s32 dag_task_id, s32 node_id, s32 weight)
 	return ret;
 }
 
+static void __dag_tasks_culc_HELT_prio(s32 dag_task_id)
+{
+	struct bpf_dag_task *dag_task, *old;
+	struct dag_tasks_map_value *v;
+
+	v = bpf_map_lookup_elem(&dag_tasks, &dag_task_id);
+	if (!v) {
+		bpf_printk("[W:dag_tasks_culc_HELT_prio] There is no entry in dag_tasks with key=%d", dag_task_id);
+		return;
+	}
+
+	dag_task = bpf_kptr_xchg(&v->dag_task, NULL); // acquire ownership
+	if (!dag_task) {
+		bpf_printk("[W:dag_tasks_culc_HELT_prio] dag_tasks[%d]->dag_task is NULL", dag_task_id);
+		return;
+	}
+
+	/* === body === */
+	bpf_dag_task_culc_HELT_prio(dag_task);
+	/* ============ */
+
+	old = bpf_kptr_xchg(&v->dag_task, dag_task);
+
+	if (old)
+		bpf_dag_task_free(old);
+}
+
 __attribute__((unused))
 static s32 task_ctx_get_weight(struct task_ctx *taskc)
 {
@@ -970,6 +997,12 @@ s32 ops_select_cpu(struct task_struct *p, s32 prev_cpu, u64 wake_flags)
 	}
 
         consume_user_ringbuf();
+
+	if (taskc->is_dag_task) {
+		if (taskc->dag_info.node_id == 0) { // src node
+			__dag_tasks_culc_HELT_prio(taskc->dag_info.dag_task_id);
+		}
+	}
 
         if (taskc->isolated) {
                 cpu = scx_bpf_pick_idle_cpu(&isolated_cpumask.cpumask, 0);
