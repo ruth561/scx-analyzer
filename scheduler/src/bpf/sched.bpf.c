@@ -4,6 +4,7 @@
  */
 
 #include "intf.h"
+#include "utils.bpf.h"
 #include "vmlinux.h"
 #include "dag_bpf_kfuncs.bpf.h"
 #include "sched.bpf.h"
@@ -11,7 +12,6 @@
 #include <bpf/bpf_helpers.h>
 
 #include "stat.bpf.h"
-#include "logger.bpf.h"
 
 #define U64_MAX 0xFFFFFFFFFFFFFFFF
 
@@ -77,24 +77,24 @@ enum task_state_ {
 	TASK_STATE_MIGRATING,
 };
 
-struct edf_entity {
-	u64 wake_up_time;
-	u64 relative_deadline;
-	u64 deadline;
-
-	u64 sched_hint;
-
+struct dag_info {
 	/*
-	 * Internal use
+	 * If this thread doesn't belong to any DAG tasks, this field is set to -1.
+	 * Otherwise, set to the DAG task ID, which is the tid of src node in the DAG task.
 	 */
-	u64 prev_sum_exec_runtime;
+	s32 dag_task_id;
+	/*
+	 * The number of node corresponding to this thread within the DAG task (dag_task_id).
+	 * If @dag_task_id equals to -1, node_id also equals to -1.
+	 */
+	s32 node_id;
 };
 
 struct task_ctx {
 	struct bpf_cpumask __kptr *tmp_cpumask;
 	int state;
         bool isolated;
-        struct edf_entity edf;
+        struct dag_info dag_info;
 };
 
 struct {
@@ -104,6 +104,7 @@ struct {
 	__type(value, struct task_ctx);
 } task_ctx SEC(".maps");
 
+/* (isolated) */
 static bool task_is_isolated(struct task_struct *p)
 {
         bool housekeeped, isolated;
@@ -148,22 +149,19 @@ static bool task_is_isolated(struct task_struct *p)
         return false;
 }
 
-/*
- * Sets deadline and wake_up_time when @p wakes up.
- */
-static void set_edf_entity(struct task_struct *p, struct task_ctx* taskc)
+/* (dag_info) */
+static inline void set_dag_info(struct task_ctx *taskc, s32 dag_task_id, s32 node_id)
 {
-	taskc->edf.wake_up_time = bpf_ktime_get_boot_ns();
-	taskc->edf.prev_sum_exec_runtime = p->se.sum_exec_runtime;
-	if (taskc->edf.relative_deadline < U64_MAX) {
-		taskc->edf.deadline = taskc->edf.wake_up_time + taskc->edf.relative_deadline;
-		record_task_deadline(p, taskc->edf.wake_up_time,
-				     taskc->edf.relative_deadline, taskc->edf.deadline);
-	} else {
-		taskc->edf.deadline = U64_MAX;
-	}
+	taskc->dag_info.dag_task_id = dag_task_id;
+	taskc->dag_info.node_id = node_id;
 }
 
+static inline void init_dag_info(struct task_ctx *taskc)
+{
+	set_dag_info(taskc, -1, -1);
+}
+
+/* (task_state) */
 static void init_task_state(struct task_ctx* taskc)
 {
 	taskc->state = TASK_STATE_QUIESCENT;
@@ -174,25 +172,13 @@ static void change_task_state(struct task_ctx* taskc, int new_state)
 	taskc->state = new_state;
 }
 
-static void init_edf_entity(struct task_struct *p, struct task_ctx* taskc)
-{
-        /*
-         * Init edf task info.
-         */
-        taskc->edf.wake_up_time = 0;
-	taskc->edf.prev_sum_exec_runtime = p->se.sum_exec_runtime;
-	taskc->edf.relative_deadline = U64_MAX;
-	taskc->edf.deadline = U64_MAX;
-	taskc->edf.sched_hint = U64_MAX;
-}
-
 // MARK: cpu_ctx
 /*
  * Structure of per-cpu context
  */
 struct cpu_ctx {
 	s32 curr;
-	u64 curr_deadline;
+	u64 curr_deadline; // TODO: replace with curr_prio
 };
 
 struct {
@@ -235,7 +221,7 @@ void update_cpu_ctx(struct task_struct *p)
 	}
 
 	cpuc->curr = p->pid;
-	cpuc->curr_deadline = taskc->edf.deadline;
+	// cpuc->curr_deadline = taskc->edf.deadline; // TODO:
 }
 
 /*
@@ -245,7 +231,7 @@ void update_cpu_ctx(struct task_struct *p)
 static s32 find_preemptible_cpu(struct task_struct *p, struct task_ctx *taskc)
 {
 	struct cpu_ctx *cpuc;
-	s32 cpu, ret;
+	s32 cpu;
 	u64 max_deadline = 0;
 
 	bpf_for(cpu, 0, nr_cpus) {
@@ -265,14 +251,16 @@ static s32 find_preemptible_cpu(struct task_struct *p, struct task_ctx *taskc)
 		}
 		if (max_deadline < cpuc->curr_deadline) {
 			max_deadline = cpuc->curr_deadline;
-			ret = cpu;
+			// ret = cpu; // TODO:
 		}
 	}
 
-	if (taskc->edf.deadline < max_deadline)
-		return ret;
-	else
-	 	return -1;
+	return -1;
+	// TODO: replace here with taskc->edf.prio
+	// if (taskc->edf.deadline < max_deadline)
+	// 	return ret;
+	// else
+	//  	return -1;
 }
 
 static inline bool should_preempt(struct task_struct *current) {
@@ -325,16 +313,17 @@ static inline bool should_preempt(struct task_struct *current) {
 		scx_bpf_error("should_preempt: Failed to get task local storage");
 		goto out;
 	}
-	
-	/*
-	 * Preemption should be performed if the deadline of a runnable task is closer
-	 * than that of the current task. 
-	 */
-	if (pc->edf.deadline < currentc->edf.deadline) {
-		ret = true;
-	} else {
-		ret = false;
-	}
+
+	// TODO:
+	// /*
+	//  * Preemption should be performed if the deadline of a runnable task is closer
+	//  * than that of the current task. 
+	//  */
+	// if (pc->edf.deadline < currentc->edf.deadline) {
+	// 	ret = true;
+	// } else {
+	// 	ret = false;
+	// }
 
 out:
 	bpf_iter_scx_dsq_destroy(&it);
@@ -377,29 +366,49 @@ static long handle_new_dag_task(struct bpf_dag_msg_new_task_payload *payload)
 	struct bpf_dag_task *dag_task, *old;
 	long status;
 	struct dag_tasks_map_value local, *v;
+	struct task_struct *p;
+	struct task_ctx *taskc;
 
+	/*
+	 * Checks if the thread exists. 
+	 */
+	p = bpf_task_from_pid(payload->src_node_tid);
+	assert_ret_err(p, 1);
+
+	taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
+	if (!taskc) {
+		bpf_printk("Failed to get task local storage at handle_new_dag_task.");
+		goto err_task_struct_release;
+	}
+
+	/*
+	 * Allocates a DAG task.
+	 */
 	dag_task = bpf_dag_task_alloc(payload->src_node_tid, payload->src_node_weight);
 	if (!dag_task) {
 		bpf_printk("Failed to newly allocate a DAG task (src_node_tid=%d).", payload->src_node_tid);
-		return 1;
+		goto err_task_struct_release;
 	}
 
-	bpf_printk("Successfully allocates a DAG-task! tid=%d, id=%d", payload->src_node_tid, dag_task->id);
+	set_dag_info(taskc, dag_task->id, 0);
+	bpf_printk("[DAG] ALLOC a DAG-task! tid=%d, dag_task_id=%d, node_id=0",
+		payload->src_node_tid, dag_task->id);
 
+	/*
+	 * Saves the bpf_dag_task ptr to the BPF map.
+	 */
 	key = payload->src_node_tid;
 	local.dag_task = NULL;
 	status = bpf_map_update_elem(&dag_tasks, &key, &local, 0);
 	if (status) {
 		bpf_printk("Failed to update dag_tasks's elem with NULL value");
-		bpf_dag_task_free(dag_task);
-		return 1;
+		goto err_dag_task_release;
 	}
 
 	v = bpf_map_lookup_elem(&dag_tasks, &key);
 	if (!v) {
 		bpf_printk("Failed to lookup dag_tasks's elem");
-		bpf_dag_task_free(dag_task);
-		return 1;
+		goto err_dag_task_release;
 	}
 
 	old = bpf_kptr_xchg(&v->dag_task, dag_task);
@@ -407,26 +416,53 @@ static long handle_new_dag_task(struct bpf_dag_msg_new_task_payload *payload)
 	if (old)
 		bpf_dag_task_free(old);
 
+	bpf_task_release(p);
 	return 0;
+
+err_dag_task_release:
+	bpf_dag_task_free(dag_task);
+err_task_struct_release:
+	bpf_task_release(p);
+	return -1;
 }
 
 static inline long handle_add_node(struct bpf_dag_msg_add_node_payload *payload)
 {
-	s32 key, node_id;
+	s32 key, node_id, ret = 0;
 	struct bpf_dag_task *dag_task, *old;
 	struct dag_tasks_map_value *v;
+	struct task_struct *p;
+	struct task_ctx *taskc;
 
+	/*
+	 * Checks if the thread exists. 
+	 */
+	p = bpf_task_from_pid(payload->tid);
+	assert_ret_err(p, 1);
+
+	taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
+	if (!taskc) {
+		bpf_printk("Failed to get task local storage at handle_new_dag_task.");
+		ret = -1;
+		goto task_struct_release;
+	}
+
+	/*
+	 * Looks up the DAG task specified by payload->dag_task_id.
+	 */
 	key = payload->dag_task_id;
 	v = bpf_map_lookup_elem(&dag_tasks, &key);
 	if (!v) {
 		bpf_printk("There is no entry in dag_tasks with key=%d", key);
-		return -1;
+		ret = -1;
+		goto task_struct_release;
 	}
 
 	dag_task = bpf_kptr_xchg(&v->dag_task, NULL); // acquire ownership
 	if (!dag_task) {
 		bpf_printk("dag_tasks[%d]->dag_task is NULL", key);
-		return -1;
+		ret = -1;
+		goto task_struct_release;
 	}
 
 	node_id = bpf_dag_task_add_node(dag_task, payload->tid, payload->weight);
@@ -434,7 +470,8 @@ static inline long handle_add_node(struct bpf_dag_msg_add_node_payload *payload)
 	bpf_dag_task_dump(dag_task);
 
 	if (node_id >= 0) {
-		bpf_printk("Successfully add a node (tid=%d, node_id=%d) to a DAG-task (id=%d)",
+		set_dag_info(taskc, dag_task->id, node_id);
+		bpf_printk("[DAG] ADD a node (tid=%d, node_id=%d) to a DAG-task (id=%d)",
 			payload->tid, node_id, dag_task->id);
 	} else {
 		bpf_printk("Failed to add a node (tid=%d) to a DAG-task (id=%d)",
@@ -446,7 +483,9 @@ static inline long handle_add_node(struct bpf_dag_msg_add_node_payload *payload)
 	if (old)
 		bpf_dag_task_free(old);
 
-	return 0;
+task_struct_release:
+	bpf_task_release(p);
+	return ret;
 }
 
 static inline long handle_add_edge(struct bpf_dag_msg_add_edge_payload *payload)
@@ -473,7 +512,7 @@ static inline long handle_add_edge(struct bpf_dag_msg_add_edge_payload *payload)
 	bpf_dag_task_dump(dag_task);
 
 	if (edge_id >= 0) {
-		bpf_printk("Successfully add a edge (%d -> %d, edge_id=%d) to a DAG-task (id=%d)",
+		bpf_printk("[DAG] ADD a edge (%d -> %d, edge_id=%d) to a DAG-task (id=%d)",
 			payload->from_tid, payload->to_tid, edge_id, dag_task->id);
 	} else {
 		bpf_printk("Failed to add a edge (%d -> %d) to a DAG-task (id=%d)",
@@ -490,11 +529,8 @@ static inline long handle_add_edge(struct bpf_dag_msg_add_edge_payload *payload)
 
 static long user_ringbuf_callback(struct bpf_dynptr *dynptr, void *ctx)
 {
-	s32 cpu = bpf_get_smp_processor_id();
 	long err;
 	enum bpf_dag_msg_type type;
-
-	bpf_printk("[*] user_ringbuf_callback: cpu=%d", cpu);
 
 	err = bpf_dynptr_read(&type, sizeof(type), dynptr, 0, 0);
 	if (err) {
@@ -662,7 +698,7 @@ s32 ops_init_task(struct task_struct *p, struct scx_init_task_args *args)
 
 	init_task_state(taskc);
 
-	init_edf_entity(p, taskc);
+	init_dag_info(taskc);
 
 	stat_per_task_init(p);
 
@@ -711,11 +747,6 @@ void ops_runnable(struct task_struct *p, u64 enq_flags)
 	}
 
         consume_user_ringbuf();
-
-	/*
-	 * Records information at wakeup.
-	 */
-	set_edf_entity(p, taskc);
 
 	change_task_state(taskc, TASK_STATE_RUNNABLE);
 }
@@ -770,19 +801,22 @@ void ops_quiescent(struct task_struct *p, u64 deq_flags)
 	}
 
 	info.exectime = stat->exectime_acm;
-	info.sched_hint = taskc->edf.sched_hint;
-	if (info.sched_hint != U64_MAX) {
-		LOGGER(&info);
-	}
+	// // TODO:
+	// // info.sched_hint = taskc->edf.sched_hint;
+	// if (info.sched_hint != U64_MAX) {
+	// 	LOGGER(&info);
+	// }
 	stat_at_quiescent(p, deq_flags);
 
-	if (taskc->isolated) {
-		u64 now = bpf_ktime_get_boot_ns();
-		if (taskc->edf.deadline < now) {
-			bpf_printk("[!] DEADLINE VIOLATION! deadline=%lld, now=%lld",
-				taskc->edf.deadline, now);
-		}
-	}
+	// // TODO:
+	// // if (taskc->isolated) {
+	// // 	u64 now = bpf_ktime_get_boot_ns();
+	// // 	TODO:
+	// // 	if (taskc->edf.deadline < now) {
+	// // 		bpf_printk("[!] DEADLINE VIOLATION! deadline=%lld, now=%lld",
+	// // 			taskc->edf.deadline, now);
+	// // 	}
+	// // }
 
 	if (deq_flags & SCX_DEQ_SLEEP) {
 		change_task_state(taskc, TASK_STATE_QUIESCENT);
@@ -870,7 +904,10 @@ void ops_enqueue(struct task_struct *p, u64 enq_flags)
 
 		barrier();
 
-                scx_bpf_dsq_insert_vtime(p, EDF_DSQ, SCX_SLICE_INF, taskc->edf.deadline, enq_flags);
+		// TODO: replace taskc->edf.deadline with taskc->edf.prio
+                // scx_bpf_dsq_insert_vtime(p, EDF_DSQ, SCX_SLICE_INF, taskc->edf.deadline, enq_flags);
+		scx_bpf_dsq_insert_vtime(p, EDF_DSQ, SCX_SLICE_INF, 100, enq_flags); // TODO:
+
                 /*
                  * If there is an CPU where a lower priority task is running, then kick it.
                  */

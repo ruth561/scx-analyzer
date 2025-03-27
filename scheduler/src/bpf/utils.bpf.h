@@ -22,12 +22,12 @@
 		}						\
 	} while (0)
 
-#define assert_ret_err(cond)					\
+#define assert_ret_err(cond, err)				\
 	do {							\
 		if (!(cond)) {					\
 			scx_bpf_error("%s:%d assertion failed",	\
 				__FILE__, __LINE__);		\
-			return -1;				\
+			return err;				\
 		}						\
 	} while (0)
 
