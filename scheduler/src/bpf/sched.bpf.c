@@ -12,6 +12,7 @@
 #include <bpf/bpf_helpers.h>
 
 #include "stat.bpf.h"
+#include "exec_time_estimator.bpf.h"
 
 #define U64_MAX 0xFFFFFFFFFFFFFFFF
 
@@ -993,6 +994,17 @@ void ops_quiescent(struct task_struct *p, u64 deq_flags)
 			p->comm, p->pid,
 			taskc->dag_info.dag_task_id, taskc->dag_info.node_id,
 			stat->exectime_sum / stat->work_cnt);
+	}
+
+	/*
+	 * Updates the weight of the DAG task node.
+	 */
+	if (taskc->is_dag_task) {
+		s64 estimated_exec_time = get_estimated_exec_time(p);
+
+		assert(estimated_exec_time >= 0);
+
+		task_ctx_set_weight(taskc, estimated_exec_time);
 	}
 
 	// TODO:

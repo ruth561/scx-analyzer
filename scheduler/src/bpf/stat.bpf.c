@@ -4,6 +4,7 @@
 #include <bpf/bpf_helpers.h>
 
 #include "utils.bpf.h"
+#include "exec_time_estimator.bpf.h"
 
 
 // MARK: cpu_stat
@@ -94,6 +95,8 @@ void stat_per_task_init(struct task_struct *p)
 	stat->work_cnt = 0;
 	stat->exectime_acm = 0;
 	stat->exectime_sum = 0;
+
+	init_exec_time_estimator(p);
 }
 
 __hidden
@@ -141,6 +144,8 @@ void stat_at_quiescent(struct task_struct *p, u64 deq_flags)
 	} else {
 		update_stat_state(stat, stopping, quiescent, now);
 	}
+
+	record_exec_time_per_work(p, stat->exectime_acm);
 
 	if (stat->exectime_acm) {
 		stat->exectime_sum += stat->exectime_acm;

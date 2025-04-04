@@ -18,6 +18,7 @@ fn main() {
 		.add_source("src/bpf/sched.bpf.c")
 		.add_source("src/bpf/stat.bpf.c")
 		.add_source("src/bpf/logger.bpf.c")
+		.add_source("src/bpf/exec_time_estimator.bpf.c")
 		.compile_link_gen()
 		.unwrap();
 }
