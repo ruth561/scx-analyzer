@@ -379,6 +379,7 @@ static void __dag_tasks_free(s32 dag_task_id)
 
 	if (dag_task) {
 		bpf_printk("[I] Free a DAG task (dag_task_id=%d, dag_task_slot_id=%d)", dag_task_id, dag_task->id);
+		bpf_dag_task_dump(dag_task);
 		bpf_dag_task_free(dag_task);
 	}
 }
@@ -619,7 +620,7 @@ static long handle_new_dag_task(struct bpf_dag_msg_new_task_payload *payload)
 	/*
 	 * Allocates a DAG task.
 	 */
-	dag_task = bpf_dag_task_alloc(payload->src_node_tid, payload->src_node_weight, payload->relative_deadline);
+	dag_task = bpf_dag_task_alloc(payload->src_node_tid, payload->src_node_weight, payload->relative_deadline, payload->period);
 	if (!dag_task) {
 		bpf_printk("Failed to newly allocate a DAG task (src_node_tid=%d).", payload->src_node_tid);
 		goto err_task_struct_release;
@@ -702,8 +703,6 @@ static inline long handle_add_node(struct bpf_dag_msg_add_node_payload *payload)
 
 	node_id = bpf_dag_task_add_node(dag_task, payload->tid, payload->weight);
 
-	bpf_dag_task_dump(dag_task);
-
 	if (node_id >= 0) {
 		set_dag_info(taskc, payload->dag_task_id, node_id);
 		bpf_printk("[DAG] ADD a node (tid=%d, node_id=%d) to a DAG-task (id=%d)",
@@ -743,8 +742,6 @@ static inline long handle_add_edge(struct bpf_dag_msg_add_edge_payload *payload)
 	}
 
 	edge_id = bpf_dag_task_add_edge(dag_task, payload->from_tid, payload->to_tid);
-
-	bpf_dag_task_dump(dag_task);
 
 	if (edge_id >= 0) {
 		bpf_printk("[DAG] ADD a edge (%d -> %d, edge_id=%d) to a DAG-task (id=%d)",
