@@ -20,6 +20,17 @@
 #define EDF_DSQ 1
 
 /*
+ * Define one of the following macros to select the DAG scheduling algorithm:
+ *   - DAG_SCHED_HELT
+ *   - DAG_SCHED_HLBS
+ *
+ * These macros specify the core DAG scheduling algorithm to use.
+ * For example, defining DAG_SCHED_HELT enables the HELT scheduling algorithm.
+ */
+// #define DAG_SCHED_HELT
+#define DAG_SCHED_HLBS
+
+/*
  * @nr_task_edf_dsq - The number of tasks in EDF_DSQ.
  *
  * This counter accounts for the following cases:
@@ -456,6 +467,7 @@ static s32 __dag_tasks_get_prio(s32 dag_task_id, s32 node_id)
 	return prio;
 }
 
+#ifdef DAG_SCHED_HELT
 static void __dag_tasks_culc_HELT_prio(s32 dag_task_id)
 {
 	struct bpf_dag_task *dag_task, *old;
@@ -481,6 +493,47 @@ static void __dag_tasks_culc_HELT_prio(s32 dag_task_id)
 
 	if (old)
 		bpf_dag_task_free(old);
+}
+#endif
+
+#ifdef DAG_SCHED_HLBS
+static void __dag_tasks_culc_HLBS_prio(s32 dag_task_id)
+{
+	struct bpf_dag_task *dag_task, *old;
+	struct dag_tasks_map_value *v;
+
+	v = bpf_map_lookup_elem(&dag_tasks, &dag_task_id);
+	if (!v) {
+		bpf_printk("[W:dag_tasks_culc_HELT_prio] There is no entry in dag_tasks with key=%d", dag_task_id);
+		return;
+	}
+
+	dag_task = bpf_kptr_xchg(&v->dag_task, NULL); // acquire ownership
+	if (!dag_task) {
+		bpf_printk("[W:dag_tasks_culc_HELT_prio] dag_tasks[%d]->dag_task is NULL", dag_task_id);
+		return;
+	}
+
+	/* === body === */
+	bpf_dag_task_culc_HLBS_prio(dag_task);
+	/* ============ */
+
+	old = bpf_kptr_xchg(&v->dag_task, dag_task);
+
+	if (old)
+		bpf_dag_task_free(old);
+}
+#endif
+
+static void calc_dag_task_prio(s32 dag_task_id)
+{
+#if defined(DAG_SCHED_HELT)
+			__dag_tasks_culc_HELT_prio(dag_task_id);
+#elif defined(DAG_SCHED_HLBS)
+			__dag_tasks_culc_HLBS_prio(dag_task_id);
+#else
+			#error "Unsupported DAG scheduler. Define DAG_SCHED_HELT or DAG_SCHED_HLBS."
+#endif
 }
 
 __attribute__((unused))
@@ -566,7 +619,7 @@ static long handle_new_dag_task(struct bpf_dag_msg_new_task_payload *payload)
 	/*
 	 * Allocates a DAG task.
 	 */
-	dag_task = bpf_dag_task_alloc(payload->src_node_tid, payload->src_node_weight);
+	dag_task = bpf_dag_task_alloc(payload->src_node_tid, payload->src_node_weight, payload->relative_deadline);
 	if (!dag_task) {
 		bpf_printk("Failed to newly allocate a DAG task (src_node_tid=%d).", payload->src_node_tid);
 		goto err_task_struct_release;
@@ -1047,18 +1100,10 @@ s32 ops_select_cpu(struct task_struct *p, s32 prev_cpu, u64 wake_flags)
 		s32 node_id = taskc->dag_info.node_id;
 
 		if (node_id == 0) { // src node
-			__dag_tasks_culc_HELT_prio(dag_task_id);
+			calc_dag_task_prio(dag_task_id);
 		}
 
-		/*
-		 * In HELT, the rank is calculated and stored in `prio`.
-		 * A higher rank in HELT indicates a higher priority.
-		 * On the other hand, in sched_ext's DSQ, tasks with smaller `vtime`
-		 * are given higher priority.
-		 * Therefore, by using `S32_MAX - prio` as the `vtime` value,
-		 * the priority is properly mapped and handled.
-		 */
-		taskc->prio = 0x7fffffff - __dag_tasks_get_prio(dag_task_id, node_id);
+		taskc->prio = __dag_tasks_get_prio(dag_task_id, node_id);
 	}
 
         if (taskc->isolated) {
