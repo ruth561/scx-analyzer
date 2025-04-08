@@ -13,6 +13,7 @@
 
 #include "stat.bpf.h"
 #include "exec_time_estimator.bpf.h"
+#include "prioq.bpf.h"
 
 #define U64_MAX 0xFFFFFFFFFFFFFFFF
 
@@ -843,8 +844,45 @@ __hidden
 s32 ops_init(void)
 {
         s32 ret, cpu;
+	s32 pid;
+	s64 prio;
 
         bpf_printk("[*] isolcpus scheduler starts");
+
+	bpf_printk("[*] === prioq test start ===");
+	prioq_push_elem(1000, 3);
+	prioq_push_elem(1001, 8);
+	prioq_push_elem(1002, 11);
+	prioq_push_elem(1003, 6);
+	prioq_push_elem(1004, 1);
+	prioq_push_elem(1005, 9);
+
+	prioq_get_first(&pid, &prio);
+	bpf_printk("first.pid=%d, first.prio=%lld", pid, prio);
+	
+	ret = prioq_pop_elem(&pid, &prio);
+	bpf_printk("pop (pid=%d, prio=%lld)", pid, prio);
+	assert(!ret && pid == 1004 && prio == 1);
+	ret = prioq_pop_elem(&pid, &prio);
+	bpf_printk("pop (pid=%d, prio=%lld)", pid, prio);
+	assert(!ret && pid == 1000 && prio == 3);
+	ret = prioq_pop_elem(&pid, &prio);
+	bpf_printk("pop (pid=%d, prio=%lld)", pid, prio);
+	assert(!ret && pid == 1003 && prio == 6);
+	ret = prioq_pop_elem(&pid, &prio);
+	bpf_printk("pop (pid=%d, prio=%lld)", pid, prio);
+	assert(!ret && pid == 1001 && prio == 8);
+	ret = prioq_pop_elem(&pid, &prio);
+	bpf_printk("pop (pid=%d, prio=%lld)", pid, prio);
+	assert(!ret && pid == 1005 && prio == 9);
+	ret = prioq_pop_elem(&pid, &prio);
+	bpf_printk("pop (pid=%d, prio=%lld)", pid, prio);
+	assert(!ret && pid == 1002 && prio == 11);
+
+	ret = prioq_pop_elem(&pid, &prio);
+	assert(ret == -ENOENT);
+
+	bpf_printk("[*] ==== prioq test end ====");
 
         /*
          * Init CPUs information.
