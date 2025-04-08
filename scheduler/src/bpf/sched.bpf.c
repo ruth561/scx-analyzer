@@ -250,12 +250,13 @@ void update_cpu_ctx(struct task_struct *p)
  * すべてのCPUを走査していき、その中で最もデッドラインが先のCPUを探し出す
  * If preemptible, return the cpu id, else return -1.
  */
-static s32 find_preemptible_cpu(struct task_struct *p, struct task_ctx *taskc)
+static s32 find_preemptible_cpu(struct task_struct *p, struct task_ctx *taskc, bool *idle)
 {
 	struct cpu_ctx *cpuc;
 	s32 ret, cpu;
 	s64 max_prio = S64_MIN;
 
+	*idle = false;
 	bpf_for(cpu, 0, nr_cpus) {
 		if (!bpf_cpumask_test_cpu(cpu, &isolated_cpumask.cpumask))
 			continue;
@@ -263,8 +264,10 @@ static s32 find_preemptible_cpu(struct task_struct *p, struct task_ctx *taskc)
 		/*
 		 * If the CPU is about to become idle, then return it.
 		 */
-		if (bpf_cpumask_test_cpu(cpu, &isolated_idle_cpumask.cpumask))
+		if (bpf_cpumask_test_cpu(cpu, &isolated_idle_cpumask.cpumask)) {
+			*idle = true;
 			return cpu;
+		}
 		
 		cpuc = get_cpu_ctx_id(cpu);
 		if (!cpuc) {
@@ -283,12 +286,17 @@ static s32 find_preemptible_cpu(struct task_struct *p, struct task_ctx *taskc)
 	 	return -1;
 }
 
+/*
+ * Check if @current should be preempted by a runnable task in the prioq.
+ * This function compares the priority of the top task in prioq with 
+ * that of @current.
+ * If @current has a lower priority (i.e., mathematically higher),
+ * it returns true.
+ */
 static inline bool should_preempt(struct task_struct *current) {
-	s32 err;
-	bool ret = false;
-	struct task_struct *p;
-        struct task_ctx *pc, *currentc;
-	struct bpf_iter_scx_dsq it;
+	s32 err, pid;
+	s64 prio;
+        struct task_ctx *currentc;
 
 	if (!current)
 		return false;
@@ -310,44 +318,14 @@ static inline bool should_preempt(struct task_struct *current) {
 		return true;
 	}
 
-	/*
-	* Retrieve the task context of the task at the front of the EDF_DSQ.
-	*/
-	bpf_rcu_read_lock();
-	err = bpf_iter_scx_dsq_new(&it, EDF_DSQ, 0);
-	if (err) {
-		scx_bpf_error("should_preempt: Failed to init a DSQ iterator.");
-		goto out;
-	}
+	err = prioq_get_first(&pid, &prio);
+	if (err) /* There is no task in prioq */
+		return false;
 
-	p = bpf_iter_scx_dsq_next(&it);
-	if (!p) {
-		/*
-		 * Preemption should not be performed if there is no task in SHARED_DSQ.
-		 */
-		goto out;
-	}
-
-        pc = bpf_task_storage_get(&task_ctx, p, 0, 0);
-	if (!pc) {
-		scx_bpf_error("should_preempt: Failed to get task local storage");
-		goto out;
-	}
-
-	/*
-	 * Preemption should be performed if the deadline of a runnable task is closer
-	 * than that of the current task. 
-	 */
-	if (pc->prio < currentc->prio) {
-		ret = true;
-	} else {
-		ret = false;
-	}
-
-out:
-	bpf_iter_scx_dsq_destroy(&it);
-	bpf_rcu_read_unlock();
-	return ret;
+	if (prio < currentc->prio)
+		return true;
+	else
+		return false;
 }
 
 // MARK: dag_tasks
@@ -1142,19 +1120,10 @@ s32 ops_select_cpu(struct task_struct *p, s32 prev_cpu, u64 wake_flags)
 	}
 
         if (taskc->isolated) {
-                cpu = scx_bpf_pick_idle_cpu(&isolated_cpumask.cpumask, 0);
-                if (cpu >= 0) {
-			/*
-			 * If there exists an idle CPU, then dispatch task to local DSQ of it.
-			 */
-                        scx_bpf_dsq_insert(p, SCX_DSQ_LOCAL, SCX_SLICE_INF, 0);
-                        scx_bpf_kick_cpu(cpu, SCX_KICK_IDLE);
-                } else {
-			/*
-			 * If there doesn't exist an idle CPU, delay the migration task.
-			 */
-                        cpu = prev_cpu;
-                }
+		/*
+		 * The cpu selection is deferred.
+		 */
+		cpu = prev_cpu;
         } else {
                 cpu = scx_bpf_pick_idle_cpu(&housekeeping_cpumask.cpumask, 0);
                 if (cpu >= 0) {
@@ -1172,6 +1141,7 @@ __hidden
 void ops_enqueue(struct task_struct *p, u64 enq_flags)
 {
         s32 cpu;
+	bool idle;
 	struct task_ctx *taskc;
 
 	taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
@@ -1201,14 +1171,18 @@ void ops_enqueue(struct task_struct *p, u64 enq_flags)
 
 		barrier();
 
-                scx_bpf_dsq_insert_vtime(p, EDF_DSQ, SCX_SLICE_INF, taskc->prio, enq_flags);
+		prioq_push_elem(p->pid, taskc->prio);
 
                 /*
                  * If there is an CPU where a lower priority task is running, then kick it.
                  */
-                cpu = find_preemptible_cpu(p, taskc);
+                cpu = find_preemptible_cpu(p, taskc, &idle);
                 if (cpu >= 0) {
-                        scx_bpf_kick_cpu(cpu, SCX_KICK_PREEMPT);
+			if (idle) {
+				scx_bpf_kick_cpu(cpu, SCX_KICK_IDLE);
+			} else {
+				scx_bpf_kick_cpu(cpu, SCX_KICK_PREEMPT);
+			}
                 }
         } else {
                 scx_bpf_dsq_insert(p, SHARED_DSQ, SCX_SLICE_DFL, enq_flags);
@@ -1218,7 +1192,9 @@ void ops_enqueue(struct task_struct *p, u64 enq_flags)
 __hidden
 void ops_dispatch(s32 cpu, struct task_struct *prev)
 {
-	bool consumed;
+	s32 err, pid;
+	s64 prio;
+	struct task_struct *p;
 
         consume_user_ringbuf();
         
@@ -1227,10 +1203,19 @@ void ops_dispatch(s32 cpu, struct task_struct *prev)
 		 * If prev is swapper thread, then do consume.
 		 */
 		if (!prev || prev->pid == 0 || should_preempt(prev)) {
-			consumed = scx_bpf_dsq_move_to_local(EDF_DSQ);
-			if (consumed) {
-				__sync_fetch_and_sub(&nr_task_edf_dsq, 1); 
-			}
+			err = prioq_pop_elem(&pid, &prio);
+			if (err)
+				return;
+
+			p = bpf_task_from_pid(pid);
+			assert_ret(p);
+
+			scx_bpf_dsq_insert(p, SCX_DSQ_LOCAL, SCX_SLICE_INF, 0);
+
+			barrier();
+
+			__sync_fetch_and_sub(&nr_task_edf_dsq, 1); 
+			bpf_task_release(p);
 		}
         } else {
                 scx_bpf_dsq_move_to_local(SHARED_DSQ);
