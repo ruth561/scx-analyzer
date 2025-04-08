@@ -113,7 +113,7 @@ struct task_ctx {
 	 * This field stores the node priority calculated by bpf_dag_task_calc_XXXX_prio kfuncs.
 	 * If not set, it contains -1.
 	 */
-	s32 prio;
+	s64 prio;
 };
 
 struct {
@@ -200,7 +200,7 @@ static void change_task_state(struct task_ctx* taskc, int new_state)
  */
 struct cpu_ctx {
 	s32 curr;
-	u64 curr_prio;
+	s64 curr_prio;
 };
 
 struct {
@@ -254,7 +254,7 @@ static s32 find_preemptible_cpu(struct task_struct *p, struct task_ctx *taskc)
 {
 	struct cpu_ctx *cpuc;
 	s32 ret, cpu;
-	u64 max_prio = 0;
+	s64 max_prio = S64_MIN;
 
 	bpf_for(cpu, 0, nr_cpus) {
 		if (!bpf_cpumask_test_cpu(cpu, &isolated_cpumask.cpumask))
@@ -385,9 +385,9 @@ static void __dag_tasks_free(s32 dag_task_id)
 	}
 }
 
-static s32 __dag_tasks_get_weight(s32 dag_task_id, s32 node_id)
+static s64 __dag_tasks_get_weight(s32 dag_task_id, s32 node_id)
 {
-	s32 weight;
+	s64 weight;
 	struct bpf_dag_task *dag_task, *old;
 	struct dag_tasks_map_value *v;
 
@@ -413,7 +413,7 @@ static s32 __dag_tasks_get_weight(s32 dag_task_id, s32 node_id)
 	return weight;
 }
 
-static s32 __dag_tasks_set_weight(s32 dag_task_id, s32 node_id, s32 weight)
+static s32 __dag_tasks_set_weight(s32 dag_task_id, s32 node_id, s64 weight)
 {
 	s32 ret;
 	struct bpf_dag_task *dag_task, *old;
@@ -441,9 +441,9 @@ static s32 __dag_tasks_set_weight(s32 dag_task_id, s32 node_id, s32 weight)
 	return ret;
 }
 
-static s32 __dag_tasks_get_prio(s32 dag_task_id, s32 node_id)
+static s64 __dag_tasks_get_prio(s32 dag_task_id, s32 node_id)
 {
-	s32 prio;
+	s64 prio;
 	struct bpf_dag_task *dag_task, *old;
 	struct dag_tasks_map_value *v;
 
