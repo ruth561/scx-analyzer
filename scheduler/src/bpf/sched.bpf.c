@@ -194,96 +194,70 @@ static void change_task_state(struct task_ctx* taskc, int new_state)
 	taskc->state = new_state;
 }
 
-// MARK: cpu_ctx
-/*
- * Structure of per-cpu context
- */
-struct cpu_ctx {
-	s32 curr;
-	s64 curr_prio;
-};
-
-struct {
-	__uint(type, BPF_MAP_TYPE_PERCPU_ARRAY);
-	__type(key, u32);
-	__type(value, struct cpu_ctx);
-	__uint(max_entries, 1);
-} cpu_ctx SEC(".maps");
-
-static struct cpu_ctx *get_cpu_ctx_id(s32 cpu)
+// MARK: sys_info
+void update_sys_info_running(s32 cpu, s32 pid, s64 prio)
 {
-	const s32 idx = 0;
-	return bpf_map_lookup_percpu_elem(&cpu_ctx, &idx, cpu);
+	bpf_sys_info_update_cpu_prio(cpu, pid, prio);
 }
 
-static struct cpu_ctx *get_cpu_ctx()
+void update_sys_info_idle(s32 cpu)
 {
-	s32 cpu = bpf_get_smp_processor_id();
-	return get_cpu_ctx_id(cpu);
+	bpf_sys_info_update_cpu_prio(cpu, -1, S64_MAX);
 }
 
-/*
- * Updates the current CPU context
- */
-void update_cpu_ctx(struct task_struct *p)
-{
-	struct cpu_ctx *cpuc;
-	struct task_ctx *taskc;
-
-	cpuc = get_cpu_ctx();
-	if (!cpuc) {
-		scx_bpf_error("update_cpu_ctx: Failed to get per-cpu context.");
-		return;
-	}
-
-	taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
-	if (!taskc) {
-		scx_bpf_error("update_cpu_ctx: Failed to create task local storage.");
-		return;
-	}
-
-	cpuc->curr = p->pid;
-	cpuc->curr_prio = taskc->prio;
-}
-
-/*
- * すべてのCPUを走査していき、その中で最もデッドラインが先のCPUを探し出す
- * If preemptible, return the cpu id, else return -1.
- */
 static s32 find_preemptible_cpu(struct task_struct *p, struct task_ctx *taskc, bool *idle)
 {
-	struct cpu_ctx *cpuc;
-	s32 ret, cpu;
-	s64 max_prio = S64_MIN;
+	s32 ret, cpu, pid;
+	s64 max_prio;
 
-	*idle = false;
-	bpf_for(cpu, 0, nr_cpus) {
-		if (!bpf_cpumask_test_cpu(cpu, &isolated_cpumask.cpumask))
-			continue;
+	ret = bpf_sys_info_get_max_prio_and_cpu(&cpu, &pid, &max_prio);
 
-		/*
-		 * If the CPU is about to become idle, then return it.
-		 */
-		if (bpf_cpumask_test_cpu(cpu, &isolated_idle_cpumask.cpumask)) {
-			*idle = true;
-			return cpu;
-		}
-		
-		cpuc = get_cpu_ctx_id(cpu);
-		if (!cpuc) {
-			scx_bpf_error("find_preemptible_cpu: Failed to find cpu context");
-			return -1;
-		}
-		if (max_prio < cpuc->curr_prio) {
-			max_prio = cpuc->curr_prio;
-			ret = cpu;
-		}
+	/*
+	 * not initialized
+	 */
+	if (ret < 0)
+		return ret;
+
+	if (max_prio == S64_MAX) {
+		*idle = true;
+		return cpu;
 	}
 
 	if (taskc->prio < max_prio)
-		return ret;
-	else
-	 	return -1;
+		return cpu;
+
+	return -1;
+}
+
+/*
+ * If there is a CPU that should be rescheduled, return its CPU index.
+ * Otherwise, return -1.
+ *
+ * This function determines if rescheduling is needed by comparing
+ * the highest priority of the prioq with the lowest priority among running tasks.
+ */
+static s32 need_resched(bool *idle)
+{
+	s32 prioq_first_pid, sys_info_pid, cpu, ret;
+	s64 prioq_first_prio, sys_info_max_prio;
+
+	*idle = false;
+	
+	ret = prioq_get_first(&prioq_first_pid, &prioq_first_prio);
+	if (ret < 0) /* There is no task in prioq. */
+		return -1;
+
+	ret = bpf_sys_info_get_max_prio_and_cpu(&cpu, &sys_info_pid, &sys_info_max_prio);
+	if (ret < 0) /* Not initialized yet. */
+		return -1;
+	
+	if (prioq_first_prio < sys_info_max_prio) {
+		if (sys_info_max_prio == S64_MAX)
+			*idle = true;
+		return cpu;
+	}
+
+	return -1;
 }
 
 /*
@@ -1009,6 +983,7 @@ void ops_running(struct task_struct *p)
 {
 	struct task_ctx *taskc;
         s32 cpu = bpf_get_smp_processor_id();
+	bool idle;
 
 	stat_at_running(p);
 
@@ -1019,9 +994,17 @@ void ops_running(struct task_struct *p)
 	}
 
         if (bpf_cpumask_test_cpu(cpu, &isolated_cpumask.cpumask))
-                update_cpu_ctx(p);
+                bpf_sys_info_update_cpu_prio(cpu, p->pid, taskc->prio);
 
 	change_task_state(taskc, TASK_STATE_RUNNING);
+
+	cpu = need_resched(&idle);
+	if (cpu >= 0) {
+		if (idle)
+			scx_bpf_kick_cpu(cpu, SCX_KICK_IDLE);
+		else
+			scx_bpf_kick_cpu(cpu, SCX_KICK_PREEMPT);
+	}
 }
 
 __hidden
@@ -1298,6 +1281,8 @@ void ops_update_idle(s32 cpu, bool idle)
 	if (idle) {
 		__sync_fetch_and_add(&nr_isolated_idle_cpus, 1);
 		bpf_cpumask_set_cpu(cpu, &isolated_idle_cpumask);
+
+		update_sys_info_idle(cpu);
 	} else {
 		__sync_fetch_and_sub(&nr_isolated_idle_cpus, 1);
 		bpf_cpumask_clear_cpu(cpu, &isolated_idle_cpumask);

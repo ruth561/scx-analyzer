@@ -51,6 +51,8 @@ extern void bpf_dag_task_culc_HLBS_prio(struct bpf_dag_task *dag_task) __weak __
 extern s64 bpf_dag_task_get_weight(struct bpf_dag_task *dag_task, u32 node_id) __weak __ksym;
 extern s32 bpf_dag_task_set_weight(struct bpf_dag_task *dag_task, u32 node_id, s64 weight) __weak __ksym;
 extern s64 bpf_dag_task_get_prio(struct bpf_dag_task *dag_task, u32 node_id) __weak __ksym;
+extern s32 bpf_sys_info_update_cpu_prio(s32 cpu, s32 pid, s64 prio) __weak __ksym;
+extern s32 bpf_sys_info_get_max_prio_and_cpu(s32 *cpu, s32 *pid, s64 *prio) __weak __ksym;
 
 enum bpf_dag_msg_type {
 	BPF_DAG_MSG_NEW_TASK,	// 新しいDAGタスクが作成されたことを伝えるメッセージ（DAGタスクの識別番号はsrc nodeのtid）
