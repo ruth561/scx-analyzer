@@ -68,6 +68,10 @@ struct Cli {
     /// Specify the DAG scheduling algorithm.
     #[clap(short, long, verbatim_doc_comment)]
     dag_sched: DagSchedAlgo,
+
+    /// If you want to enable execution time estimator, then set true to this parametor.
+    #[clap(short, long, verbatim_doc_comment, default_value="false")]
+    exec_est_enable: bool,
 }
 
 /*
@@ -133,6 +137,13 @@ fn main() {
             println!("[*] The HLBS algorithm is used!");
         },
     };
+
+    if cli.exec_est_enable {
+        skel.maps.bss_data.exec_est_enabled = true;
+        println!("[*] Exec time estimator is enabled!");
+    } else {
+        println!("[*] Exec time estimator is disabled.");
+    }
 
     let mut skel: BpfSkel = scx_ops_load!(skel, scheduler_ops, uei).unwrap();
     let link: Link = scx_ops_attach!(skel, scheduler_ops).unwrap();

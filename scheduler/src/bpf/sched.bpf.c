@@ -24,6 +24,7 @@
  * This global variable is initialized by the user-space eBPF program loader.
  */
 int dag_sched_algo = -1;
+bool exec_est_enabled = false;
 
 /*
  * @nr_task_edf_dsq - The number of tasks in EDF_DSQ.
@@ -473,10 +474,10 @@ static void calc_dag_task_prio(s32 dag_task_id)
 {
 	switch (dag_sched_algo) {
 	case DAG_SCHED_HELT:
-			__dag_tasks_culc_HELT_prio(dag_task_id);
+		__dag_tasks_culc_HELT_prio(dag_task_id);
 		break;
 	case DAG_SCHED_HLBS:
-			__dag_tasks_culc_HLBS_prio(dag_task_id);
+		__dag_tasks_culc_HLBS_prio(dag_task_id);
 		break;
 	case -1:
 		scx_bpf_error("dag_sched_algo is not initialized");
@@ -1049,7 +1050,8 @@ void ops_quiescent(struct task_struct *p, u64 deq_flags)
 
 		assert(estimated_exec_time >= 0);
 
-		task_ctx_set_weight(taskc, estimated_exec_time);
+		if (exec_est_enabled)
+			task_ctx_set_weight(taskc, estimated_exec_time);
 	}
 
 	// TODO:
