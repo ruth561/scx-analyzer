@@ -196,4 +196,9 @@ struct task_work_info {
 	u64 sched_hint;
 };
 
+enum DAG_SCHED_ALGO {
+	DAG_SCHED_HELT,
+	DAG_SCHED_HLBS,
+};
+
 #endif /* __INTF_H */

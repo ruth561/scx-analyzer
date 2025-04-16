@@ -35,6 +35,26 @@ unsafe impl Plain for task_work_info {}
 
 use clap::Parser;
 
+#[derive(Debug, Clone, Copy)]
+enum DagSchedAlgo {
+    HELT,
+    HLBS,
+}
+
+use std::str::FromStr;
+
+impl FromStr for DagSchedAlgo {
+	type Err = String; // エラーとして `String` を使用
+    
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		match s {
+			"HELT" => Ok(DagSchedAlgo::HELT),
+			"HLBS" => Ok(DagSchedAlgo::HLBS),
+			_ => Err(format!("Invalid policy string '{}'", s)),
+		}
+	}
+}
+
 #[derive(Debug, Parser)]
 struct Cli {
     /// Specify the CPUs where ops events should be recorded.
@@ -44,6 +64,10 @@ struct Cli {
     ///   - Mixed:        3,6-8
     #[clap(short, long, verbatim_doc_comment)]
     record_cpus: String,
+
+    /// Specify the DAG scheduling algorithm.
+    #[clap(short, long, verbatim_doc_comment)]
+    dag_sched: DagSchedAlgo,
 }
 
 /*
@@ -94,6 +118,21 @@ fn main() {
     let record_cpumask = parse_cpus_str(&cli.record_cpus);
     println!("[*] record_cpumask: 0x{:016x}", record_cpumask);
     skel.maps.bss_data.record_cpumask.cpumask.bits[0] = record_cpumask;
+
+    /*
+     * Setting DAG scheduling algorithm
+     */
+    skel.maps.data_data.dag_sched_algo = 0;
+    match cli.dag_sched {
+        DagSchedAlgo::HELT => {
+            skel.maps.data_data.dag_sched_algo = DAG_SCHED_ALGO_DAG_SCHED_HELT as i32;
+            println!("[*] The HELT algorithm is used!");
+        },
+        DagSchedAlgo::HLBS => {
+            skel.maps.data_data.dag_sched_algo = DAG_SCHED_ALGO_DAG_SCHED_HLBS as i32;
+            println!("[*] The HLBS algorithm is used!");
+        },
+    };
 
     let mut skel: BpfSkel = scx_ops_load!(skel, scheduler_ops, uei).unwrap();
     let link: Link = scx_ops_attach!(skel, scheduler_ops).unwrap();

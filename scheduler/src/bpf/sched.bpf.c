@@ -21,15 +21,9 @@
 #define EDF_DSQ 1
 
 /*
- * Define one of the following macros to select the DAG scheduling algorithm:
- *   - DAG_SCHED_HELT
- *   - DAG_SCHED_HLBS
- *
- * These macros specify the core DAG scheduling algorithm to use.
- * For example, defining DAG_SCHED_HELT enables the HELT scheduling algorithm.
+ * This global variable is initialized by the user-space eBPF program loader.
  */
-// #define DAG_SCHED_HELT
-#define DAG_SCHED_HLBS
+int dag_sched_algo = -1;
 
 /*
  * @nr_task_edf_dsq - The number of tasks in EDF_DSQ.
@@ -421,7 +415,6 @@ static s64 __dag_tasks_get_prio(s32 dag_task_id, s32 node_id)
 	return prio;
 }
 
-#ifdef DAG_SCHED_HELT
 static void __dag_tasks_culc_HELT_prio(s32 dag_task_id)
 {
 	struct bpf_dag_task *dag_task, *old;
@@ -448,9 +441,7 @@ static void __dag_tasks_culc_HELT_prio(s32 dag_task_id)
 	if (old)
 		bpf_dag_task_free(old);
 }
-#endif
 
-#ifdef DAG_SCHED_HLBS
 static void __dag_tasks_culc_HLBS_prio(s32 dag_task_id)
 {
 	struct bpf_dag_task *dag_task, *old;
@@ -477,17 +468,22 @@ static void __dag_tasks_culc_HLBS_prio(s32 dag_task_id)
 	if (old)
 		bpf_dag_task_free(old);
 }
-#endif
 
 static void calc_dag_task_prio(s32 dag_task_id)
 {
-#if defined(DAG_SCHED_HELT)
+	switch (dag_sched_algo) {
+	case DAG_SCHED_HELT:
 			__dag_tasks_culc_HELT_prio(dag_task_id);
-#elif defined(DAG_SCHED_HLBS)
+		break;
+	case DAG_SCHED_HLBS:
 			__dag_tasks_culc_HLBS_prio(dag_task_id);
-#else
-			#error "Unsupported DAG scheduler. Define DAG_SCHED_HELT or DAG_SCHED_HLBS."
-#endif
+		break;
+	case -1:
+		scx_bpf_error("dag_sched_algo is not initialized");
+		break;
+	default:
+		scx_bpf_error("Unknown DAG scheduling algorithm (dag_sched_algo=%d)", dag_sched_algo);
+	}
 }
 
 __attribute__((unused))
