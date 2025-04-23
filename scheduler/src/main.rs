@@ -25,6 +25,7 @@ use scx_utils::uei_report;
 
 use plain::Plain;
 
+use std::io::Read;
 use std::mem::MaybeUninit;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -96,6 +97,36 @@ fn parse_cpus_str(cpu_str_arg: &str) -> u64
     cpumask
 }
 
+fn get_cpu_list_from_sysfs(path: &str) -> String
+{
+    let mut cpu_list_file = std::fs::File::open(path).unwrap();
+    let mut buf = String::new();
+    cpu_list_file.read_to_string(&mut buf).unwrap();
+
+    buf.trim().to_string()
+}
+
+fn get_isolated_cpu_mask() -> u64
+{
+    let cpulist = get_cpu_list_from_sysfs("/sys/devices/system/cpu/isolated");
+    let cpumask = parse_cpus_str(&cpulist);
+    cpumask
+}
+
+fn get_possible_cpu_mask() -> u64
+{
+    let cpulist = get_cpu_list_from_sysfs("/sys/devices/system/cpu/possible");
+    let cpumask = parse_cpus_str(&cpulist);
+    cpumask
+}
+
+fn get_online_cpu_mask() -> u64
+{
+    let cpulist = get_cpu_list_from_sysfs("/sys/devices/system/cpu/online");
+    let cpumask = parse_cpus_str(&cpulist);
+    cpumask
+}
+
 fn logger_rb_recorder(data: &[u8]) -> i32
 {
     let entry: &task_work_info = plain::from_bytes(data).unwrap();
@@ -119,6 +150,16 @@ fn main() {
     /*
      * Setting cpumask
      */
+    let possible_cpumask = get_possible_cpu_mask();
+    let online_cpumask = get_online_cpu_mask();
+    let isolated_cpumask = get_isolated_cpu_mask();
+    skel.maps.bss_data.possible_cpumask.cpumask.bits[0] = possible_cpumask;
+    skel.maps.bss_data.online_cpumask.cpumask.bits[0] = online_cpumask;
+    skel.maps.bss_data.isolated_cpumask.cpumask.bits[0] = isolated_cpumask;
+    skel.maps.bss_data.nr_possible_cpus = possible_cpumask.count_ones();
+    skel.maps.bss_data.nr_online_cpus = online_cpumask.count_ones();
+    skel.maps.bss_data.nr_isolated_cpus = isolated_cpumask.count_ones();
+
     let record_cpumask = parse_cpus_str(&cli.record_cpus);
     println!("[*] record_cpumask: 0x{:016x}", record_cpumask);
     skel.maps.bss_data.record_cpumask.cpumask.bits[0] = record_cpumask;

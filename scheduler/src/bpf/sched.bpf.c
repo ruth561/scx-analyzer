@@ -70,7 +70,11 @@ u32 nr_isolated_idle_cpus;
 UEI_DEFINE(uei);
 
 #define MAX_NR_CPUS 512
-s32 nr_cpus;
+u32 nr_possible_cpus;
+u32 nr_online_cpus;
+u32 nr_isolated_cpus;
+struct bpf_cpumask possible_cpumask;
+struct bpf_cpumask online_cpumask;
 struct bpf_cpumask isolated_cpumask;
 struct bpf_cpumask isolated_idle_cpumask;
 struct bpf_cpumask housekeeping_cpumask;
@@ -836,13 +840,15 @@ s32 ops_init(void)
         /*
          * Init CPUs information.
          */
-        nr_cpus = 12; /* Hard coding */
-        bpf_cpumask_clear(&isolated_cpumask);
-        bpf_cpumask_set_cpu(5, &isolated_cpumask);
-        bpf_cpumask_set_cpu(11, &isolated_cpumask);
+	bpf_printk("[D] nr_possible_cpus = %d", nr_possible_cpus);
+	bpf_printk("[D] possible_cpumask: %016llx", possible_cpumask.cpumask.bits[0]);
+	bpf_printk("[D] nr_online_cpus = %d", nr_online_cpus);
+	bpf_printk("[D] online_cpumask: %016llx", online_cpumask.cpumask.bits[0]);
+	bpf_printk("[D] nr_isolated_cpus = %d", nr_isolated_cpus);
+	bpf_printk("[D] isolated_cpumask: %016llx", isolated_cpumask.cpumask.bits[0]);
 
         bpf_for(cpu, 0, MAX_NR_CPUS) {
-                if (cpu >= nr_cpus)
+                if (cpu >= nr_possible_cpus)
                         break;
                 
                 if (!bpf_cpumask_test_cpu(cpu, &isolated_cpumask.cpumask)) {
@@ -852,21 +858,17 @@ s32 ops_init(void)
 		stat_per_cpu_init(cpu);
         }
 
-        bpf_printk("[*] isolated_cpumask: %lx", isolated_cpumask.cpumask.bits[0]);
-        bpf_printk("[*] housekeeping_cpumask: %lx", housekeeping_cpumask.cpumask.bits[0]);
+        bpf_printk("[D] housekeeping_cpumask: %lx", housekeeping_cpumask.cpumask.bits[0]);
 
 	/*
 	 * Sets all isolated CPUs to the idle state.
 	 */
-	nr_isolated_cpus = bpf_cpumask_weight(&isolated_cpumask.cpumask);
 	nr_isolated_idle_cpus = nr_isolated_cpus;
 	bpf_cpumask_clear(&isolated_idle_cpumask);
 	bpf_cpumask_copy(&isolated_idle_cpumask, &isolated_cpumask.cpumask);
 
-	bpf_printk("[*] nr_isolated_cpus = %d", nr_isolated_cpus);
-	bpf_printk("[*] isolated_cpumask = %016llx", isolated_cpumask.cpumask.bits[0]);
-	bpf_printk("[*] nr_isolated_idle_cpus = %d", nr_isolated_idle_cpus);
-	bpf_printk("[*] isolated_idle_cpumask = %016llx", isolated_idle_cpumask.cpumask.bits[0]);
+	bpf_printk("[D] nr_isolated_idle_cpus = %d", nr_isolated_idle_cpus);
+	bpf_printk("[D] isolated_idle_cpumask = %016llx", isolated_idle_cpumask.cpumask.bits[0]);
 
         /*
          * Creates a shared DSQ.
