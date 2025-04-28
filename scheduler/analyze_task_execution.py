@@ -63,15 +63,23 @@ print(dag_tasks)
 
 plt.figure()
 
-labels = []
+labels = [""]
+data = []
 
 for i, node_tid in enumerate(node_info_list):
 	node_info = node_info_list[node_tid]
-	print(i, node_info)
-	exectimes = node_info.exectimes
-	x = [i for _ in exectimes]
-	plt.scatter(x, exectimes)
 	labels.append(node_info.comm)
+	data.append(node_info.exectimes)
+
+plt.boxplot(data, medianprops=dict(linewidth=2, color='red'))
+
+bp = plt.boxplot(data, medianprops=dict(linewidth=2, color='red'))
+
+for i, line in enumerate(bp['medians']):
+    # 中央線の位置情報を取得
+    x, y = line.get_xydata()[1]
+    # 中央値を表示
+    plt.text(x, y, f'{y:.1f}', ha='center', va='bottom', fontsize=10, color='red')
 
 plt.xticks(range(len(labels)), labels, rotation=45, ha='right', fontsize=20)
 
