@@ -191,9 +191,32 @@ struct task_deadline_aux {
 
 static const u64 ENTRY_SIZE = sizeof(struct entry_header);
 
-struct task_work_info {
+/*
+ * Types of messages via BPF map `logger_rb`.
+ */
+enum {
+	/*
+	 * A new node of a DAG task has been spawned.
+	 */
+	LOG_TYPE_TASK_INFO = 0,
+	/*
+	 * A node has gone to sleep and reports the duration of its last execution. 
+	 */
+	LOG_TYPE_WORK_INFO,
+};
+
+struct task_info {
+	u32 log_type;
+	u32 tid;
+	u32 weight;
+	char comm[16];
+};
+
+struct work_info {
+	u32 log_type;
+	u32 tid;
 	u64 exectime;
-	u64 sched_hint;
+	u64 weight;
 };
 
 enum DAG_SCHED_ALGO {

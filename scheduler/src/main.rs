@@ -32,7 +32,8 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 unsafe impl Plain for entry_header {}
-unsafe impl Plain for task_work_info {}
+unsafe impl Plain for task_info {}
+unsafe impl Plain for work_info {}
 
 use clap::Parser;
 
@@ -127,10 +128,32 @@ fn get_online_cpu_mask() -> u64
     cpumask
 }
 
+fn char_ptr_to_str(data: &[i8]) -> String
+{
+    let bytes: Vec<u8> = data.iter().map(|&b| b as u8).collect();
+    
+    let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+    let ascii_bytes = &bytes[..end];
+
+    std::str::from_utf8(ascii_bytes).unwrap().to_string()
+}
+
 fn logger_rb_recorder(data: &[u8]) -> i32
 {
-    let entry: &task_work_info = plain::from_bytes(data).unwrap();
-    println!("exectime={}, hint={}", entry.exectime, entry.sched_hint);
+    let log_type = u32::from_le_bytes(data[0..4].try_into().unwrap());
+    match log_type {
+        LOG_TYPE_TASK_INFO => {
+            let entry: &task_info = plain::from_bytes(data).unwrap();
+            println!("task_info: tid={}, comm={}, weight={}", entry.tid, char_ptr_to_str(&entry.comm), entry.weight);
+        },
+        LOG_TYPE_WORK_INFO => {
+            let entry: &work_info = plain::from_bytes(data).unwrap();
+            println!("work_info: tid={}, exectime={}, weight={}", entry.tid, entry.exectime, entry.weight);
+        },
+        _ => {
+            assert!(false);
+        }
+    }
     return 0;
 }
 

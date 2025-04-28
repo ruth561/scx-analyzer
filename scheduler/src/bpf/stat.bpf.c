@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0
 #include "stat.bpf.h"
+#include "intf.h"
 #include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
 
 #include "utils.bpf.h"
 #include "exec_time_estimator.bpf.h"
+#include "logger.bpf.h"
 
 
 // MARK: cpu_stat
@@ -144,6 +146,11 @@ void stat_at_quiescent(struct task_struct *p, u64 deq_flags)
 	} else {
 		update_stat_state(stat, stopping, quiescent, now);
 	}
+
+	/*
+	 * Send the information of the execution time of `p` to userspace.
+	 */
+	log_work_info(p->pid, stat->exectime_acm, get_estimated_exec_time(p));
 
 	record_exec_time_per_work(p, stat->exectime_acm);
 

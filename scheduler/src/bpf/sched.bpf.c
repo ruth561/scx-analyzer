@@ -4,6 +4,7 @@
  */
 
 #include "intf.h"
+#include "logger.bpf.h"
 #include "utils.bpf.h"
 #include "vmlinux.h"
 #include "dag_bpf_kfuncs.bpf.h"
@@ -606,6 +607,7 @@ static long handle_new_dag_task(struct bpf_dag_msg_new_task_payload *payload)
 	if (old)
 		bpf_dag_task_free(old);
 
+	log_task_info(p, payload->src_node_tid, payload->src_node_weight);
 	bpf_task_release(p);
 	return 0;
 
@@ -964,12 +966,14 @@ void ops_runnable(struct task_struct *p, u64 enq_flags)
 {
         struct task_ctx *taskc;
 
-	stat_at_runnable(p, enq_flags);
-
 	taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
 	if (!taskc) {
 		scx_bpf_error("[!] ops_runnable: Failed to get task local storage");
 		return;
+	}
+
+	if (taskc->is_dag_task) {
+		stat_at_runnable(p, enq_flags);
 	}
 
         consume_user_ringbuf();
@@ -984,12 +988,14 @@ void ops_running(struct task_struct *p)
         s32 cpu = bpf_get_smp_processor_id();
 	bool idle;
 
-	stat_at_running(p);
-
 	taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
 	if (!taskc) {
 		scx_bpf_error("[!] ops_running: Failed to get task local storage");
 		return;
+	}
+
+	if (taskc->is_dag_task) {
+		stat_at_running(p);
 	}
 
         if (bpf_cpumask_test_cpu(cpu, &isolated_cpumask.cpumask))
@@ -1010,13 +1016,15 @@ __hidden
 void ops_stopping(struct task_struct *p, bool runnable)
 {
 	struct task_ctx *taskc;
-
-	stat_at_stopping(p, runnable);
 	
 	taskc = bpf_task_storage_get(&task_ctx, p, 0, 0);
 	if (!taskc) {
 		scx_bpf_error("[!] ops_stopping: Failed to get task local storage");
 		return;
+	}
+
+	if (taskc->is_dag_task) {
+		stat_at_stopping(p, runnable);
 	}
 
 	change_task_state(taskc, TASK_STATE_STOPPING);
@@ -1034,7 +1042,9 @@ void ops_quiescent(struct task_struct *p, u64 deq_flags)
 		return;
 	}
 
-	stat_at_quiescent(p, deq_flags);
+	if (taskc->is_dag_task) {
+		stat_at_quiescent(p, deq_flags);
+	}
 
 	stat = get_task_stat_or_ret(p);
 	if (taskc->is_dag_task && stat && stat->work_cnt > 0) {
