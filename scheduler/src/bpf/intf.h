@@ -208,6 +208,7 @@ enum {
 struct task_info {
 	u32 log_type;
 	u32 tid;
+	u32 src_node_tid;
 	u32 weight;
 	char comm[16];
 };

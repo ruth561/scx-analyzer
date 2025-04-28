@@ -16,12 +16,13 @@ void logger(void *data, u32 size)
 }
 
 __hidden
-void log_task_info(struct task_struct *p, u32 tid, u32 weight)
+void log_task_info(struct task_struct *p, u32 tid, u32 src_node_tid, u32 weight)
 {
 	struct task_info info;
 
 	info.log_type = LOG_TYPE_TASK_INFO;
 	info.tid = tid;
+	info.src_node_tid = src_node_tid;
 	info.weight = weight;
 	*(u64 *) &info.comm[0] = *(u64 *)&p->comm[0];
 	*(u64 *) &info.comm[8] = *(u64 *)&p->comm[8];

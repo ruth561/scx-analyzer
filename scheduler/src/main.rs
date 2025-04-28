@@ -149,8 +149,9 @@ fn logger_rb_recorder(data: &[u8], writer: &mut BufWriter<File>) -> i32
             let entry: &task_info = plain::from_bytes(data).unwrap();
             writeln!(
                 writer,
-                "task_info,tid={},comm={},weight={}",
+                "task_info,tid={},src_node_tid={},comm={},weight={}",
                 entry.tid,
+                entry.src_node_tid,
                 char_ptr_to_str(&entry.comm),
                 entry.weight
             ).unwrap();

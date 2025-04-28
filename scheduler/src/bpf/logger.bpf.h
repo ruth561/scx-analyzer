@@ -11,7 +11,7 @@ void logger(void *data, u32 size);
 
 #define LOGGER(data) logger(data, sizeof(*data))
 
-void log_task_info(struct task_struct *p, u32 tid, u32 weight);
+void log_task_info(struct task_struct *p, u32 tid, u32 src_node_tid, u32 weight);
 void log_work_info(u32 tid, u64 exectime, u64 weight);
 
 #endif

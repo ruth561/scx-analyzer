@@ -607,7 +607,7 @@ static long handle_new_dag_task(struct bpf_dag_msg_new_task_payload *payload)
 	if (old)
 		bpf_dag_task_free(old);
 
-	log_task_info(p, payload->src_node_tid, payload->src_node_weight);
+	log_task_info(p, payload->src_node_tid, payload->src_node_tid, payload->src_node_weight);
 	bpf_task_release(p);
 	return 0;
 
@@ -673,6 +673,8 @@ static inline long handle_add_node(struct bpf_dag_msg_add_node_payload *payload)
 	if (old)
 		bpf_dag_task_free(old);
 
+	log_task_info(p, payload->tid, payload->dag_task_id, payload->weight);
+	
 task_struct_release:
 	bpf_task_release(p);
 	return ret;
