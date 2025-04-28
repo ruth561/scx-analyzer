@@ -26,6 +26,9 @@ use scx_utils::uei_report;
 use plain::Plain;
 
 use std::io::Read;
+use std::io::Write;
+use std::fs::File;
+use std::io::BufWriter;
 use std::mem::MaybeUninit;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -138,17 +141,29 @@ fn char_ptr_to_str(data: &[i8]) -> String
     std::str::from_utf8(ascii_bytes).unwrap().to_string()
 }
 
-fn logger_rb_recorder(data: &[u8]) -> i32
+fn logger_rb_recorder(data: &[u8], writer: &mut BufWriter<File>) -> i32
 {
     let log_type = u32::from_le_bytes(data[0..4].try_into().unwrap());
     match log_type {
         LOG_TYPE_TASK_INFO => {
             let entry: &task_info = plain::from_bytes(data).unwrap();
-            println!("task_info: tid={}, comm={}, weight={}", entry.tid, char_ptr_to_str(&entry.comm), entry.weight);
+            writeln!(
+                writer,
+                "task_info,tid={},comm={},weight={}",
+                entry.tid,
+                char_ptr_to_str(&entry.comm),
+                entry.weight
+            ).unwrap();
         },
         LOG_TYPE_WORK_INFO => {
             let entry: &work_info = plain::from_bytes(data).unwrap();
-            println!("work_info: tid={}, exectime={}, weight={}", entry.tid, entry.exectime, entry.weight);
+            writeln!(
+                writer,
+                "work_info,tid={},exectime={},weight={}",
+                entry.tid,
+                entry.exectime,
+                entry.weight
+            ).unwrap();
         },
         _ => {
             assert!(false);
@@ -212,9 +227,11 @@ fn main() {
     let mut skel: BpfSkel = scx_ops_load!(skel, scheduler_ops, uei).unwrap();
     let link: Link = scx_ops_attach!(skel, scheduler_ops).unwrap();
     
+    let file = File::create("log.txt").unwrap();
+    let mut writer = BufWriter::new(file);
     let mut builder = RingBufferBuilder::new();
     builder.add(&skel.maps.logger_rb, move |data| {
-        logger_rb_recorder(data)
+        logger_rb_recorder(data, &mut writer)
     }).unwrap();
     let ringbuf = builder.build().unwrap();
 

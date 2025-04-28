@@ -16,6 +16,7 @@ The implementation of the scx scheduler is located in `src/bpf/`. This subdirect
 * **sched.bpf.c**: Contains the core scheduling logic. You can implement a custom scheduling algorithm by modifying this file.
 * **stat.bpf.c**: Implements functionality related to statistics.
 * **logger.bpf.c**: Implements logging functionality. The `LOGGER` macro is defined here, enabling loging to userspace. Logs are output to `stdout` related to the eBPF loader.
+For more details, see the Logger section.
 
 ## Core Implementation of the Scheduler
 
@@ -24,3 +25,9 @@ Currenty, an **isolcpus-based scheduler** is implemented in `src/bpf/sched.bpf.c
 ### Kernel Restriction and Workaround
 
 The current `sched_ext` implementation **prevents loading scx schedulers when `isolcpus` is specified**. For details, refer to [this commit](https://github.com/ruth561/linux/commit/9f391f94a1730232ad2760202755b2d9baf4688d). **To use the isolcpus scheduler, you must use a kernel where [these four lines](https://github.com/torvalds/linux/blob/c45323b7560ec87c37c729b703c86ee65f136d75/kernel/sched/ext.c#L5448-L5452) are commented out**.
+
+## Logger
+
+The logger, implemented in *src/bpf/logger.bpf.c*, sends information from the eBPF side to the userspace program.  
+The userspace program saves the received information to a log file (*log.txt*) or outputs it to stdout.  
+This log file can be used to debug the task execution history.
